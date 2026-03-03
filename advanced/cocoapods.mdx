@@ -1,0 +1,167 @@
+---
+title: 'CocoaPods Integration'
+description: 'Use pods.rb to customize CocoaPods configuration for your targets'
+---
+
+## Overview
+
+The `pods.rb` file allows you to customize CocoaPods configuration for specific targets. This is particularly useful when you need to enable React Native in targets like App Clips or Share Extensions.
+
+## Creating a pods.rb File
+
+Add a `pods.rb` file to the root of your repository. This file will be evaluated with global access to the `podfile_properties` variable.
+
+<Warning>
+The `pods.rb` file must be placed in the root of your repository, not inside the target directory.
+</Warning>
+
+## Enabling React Native in Targets
+
+The most common use case for `pods.rb` is enabling React Native in App Clip targets. Here's a complete example:
+
+```rb
+require File.join(File.dirname(`node --print "require.resolve('react-native/package.json')"`), "scripts/react_native_pods")
+
+exclude = []
+use_expo_modules!(exclude: exclude)
+
+if ENV['EXPO_USE_COMMUNITY_AUTOLINKING'] == '1'
+  config_command = ['node', '-e', "process.argv=['', '', 'config'];require('@react-native-community/cli').run()"];
+else
+  config_command = [
+    'node',
+    '--no-warnings',
+    '--eval',
+    'require(require.resolve(\'expo-modules-autolinking\', { paths: [require.resolve(\'expo/package.json\')] }))(process.argv.slice(1))',
+    'react-native-config',
+    '--json',
+    '--platform',
+    'ios'
+  ]
+end
+
+config = use_native_modules!(config_command)
+
+use_frameworks! :linkage => podfile_properties['ios.useFrameworks'].to_sym if podfile_properties['ios.useFrameworks']
+use_frameworks! :linkage => ENV['USE_FRAMEWORKS'].to_sym if ENV['USE_FRAMEWORKS']
+
+use_react_native!(
+  :path => config[:reactNativePath],
+  :hermes_enabled => podfile_properties['expo.jsEngine'] == nil || podfile_properties['expo.jsEngine'] == 'hermes',
+  # An absolute path to your application root.
+  :app_path => "#{Pod::Config.instance.installation_root}/..",
+  :privacy_file_aggregation_enabled => podfile_properties['apple.privacyManifestAggregationEnabled'] != 'false',
+)
+```
+
+## How It Works
+
+<Accordion title="Podfile Block Structure">
+The `pods.rb` file executes at the end of the Podfile in a target-specific block:
+
+```rb
+target "target_dir_name" do
+   # Your pods.rb content goes here
+end
+```
+
+The target name must exactly match the name of the target directory in your `/targets` folder.
+</Accordion>
+
+<Accordion title="Available Variables">
+Your `pods.rb` file has access to:
+
+- **`podfile_properties`** - A hash containing properties from your Expo config
+  - `ios.useFrameworks` - Framework linkage setting
+  - `expo.jsEngine` - JavaScript engine (hermes/jsc)
+  - `apple.privacyManifestAggregationEnabled` - Privacy manifest setting
+- **Environment variables** - Standard ENV hash
+  - `EXPO_USE_COMMUNITY_AUTOLINKING` - Autolinking mode
+  - `USE_FRAMEWORKS` - Framework override
+</Accordion>
+
+## Common Use Cases
+
+### App Clips with React Native
+
+For App Clips that need React Native, use the full example above. This enables:
+
+- React Native core dependencies
+- Expo modules autolinking
+- Hermes JavaScript engine
+- Privacy manifest aggregation
+
+<Tip>
+Make sure to set `exportJs: true` in your App Clip's `expo-target.config.js` to bundle JavaScript for offline use.
+</Tip>
+
+### Share Extensions with React Native
+
+The same `pods.rb` configuration works for Share Extensions:
+
+```js
+// targets/share/expo-target.config.js
+module.exports = {
+  type: "share",
+  exportJs: true, // Enable JS bundling
+};
+```
+
+### Custom Pod Dependencies
+
+You can also add custom pod dependencies:
+
+```rb
+# After the standard React Native setup
+pod 'MyCustomPod', '~> 1.0'
+```
+
+## Target Matching
+
+<Warning>
+The target name in the Podfile block must **exactly match** your target directory name. For example:
+
+- Target directory: `/targets/my-clip/`
+- Podfile target: `target "my-clip" do`
+
+Case sensitivity and hyphens/underscores must match precisely.
+</Warning>
+
+## Troubleshooting
+
+<Accordion title="Pod install fails">
+Ensure you have CocoaPods 1.16.2 or later:
+
+```bash
+pod --version
+gem install cocoapods
+```
+
+Also verify Ruby 3.2.0 or later:
+
+```bash
+ruby --version
+```
+</Accordion>
+
+<Accordion title="React Native not found in target">
+Verify that:
+
+1. Your `pods.rb` file is in the repository root
+2. The target name matches the directory name exactly
+3. You've run `npx expo prebuild --clean` after creating the file
+</Accordion>
+
+<Accordion title="Autolinking issues">
+If modules aren't linking correctly:
+
+1. Check the `config_command` array in your `pods.rb`
+2. Try setting `EXPO_USE_COMMUNITY_AUTOLINKING=1` environment variable
+3. Clear your Pods cache: `rm -rf ios/Pods && rm ios/Podfile.lock`
+</Accordion>
+
+## Next Steps
+
+- Learn about [sharing files between targets](/advanced/shared-files)
+- Set up [JavaScript bundling with exportJs](/advanced/export-js)
+- Configure [custom frameworks](/advanced/custom-frameworks)

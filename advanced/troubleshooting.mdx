@@ -1,0 +1,475 @@
+---
+title: 'Troubleshooting'
+description: 'Solutions for common issues when building Apple Targets'
+---
+
+## Build Errors
+
+### SwiftUI Preview Issues
+
+SwiftUI previews often fail when React Native is in the project due to build complexity.
+
+<Accordion title="Clear SwiftUI preview cache">
+Run this command to clear corrupted preview cache:
+
+```bash
+xcrun simctl --set previews delete all
+```
+
+Then restart Xcode and try the preview again.
+</Accordion>
+
+<Accordion title="Prebuild without React Native">
+For faster development of native-only extensions, use the blank template:
+
+```bash
+npx expo prebuild --template ./node_modules/@bacons/apple-targets/prebuild-blank.tgz --clean
+```
+
+<Warning>
+This is for **development only**. Never use this template for production builds—it removes React Native entirely.
+</Warning>
+
+This is useful when:
+- Building widgets that don't use React Native
+- Working on SwiftUI previews
+- Iterating on native UI quickly
+
+Switch back to normal prebuild for production:
+
+```bash
+npx expo prebuild --clean
+```
+</Accordion>
+
+<Accordion title="Disable SwiftUI previews">
+If previews continue to cause issues, comment them out temporarily:
+
+```swift
+// #Preview {
+//     MyWidget()
+// }
+```
+
+You can still build and test on device/simulator without previews.
+</Accordion>
+
+### Widget Not Showing on Home Screen
+
+If your widget builds successfully but doesn't appear on the home screen:
+
+<Accordion title="Use iOS 18+">
+On iOS 18, you can transform the app icon into a widget:
+
+1. Long-press your app icon on the home screen
+2. Tap "Edit Home Screen"
+3. Select widget display options
+4. Choose your widget configuration
+
+This is easier than the traditional widget gallery flow.
+</Accordion>
+
+<Accordion title="Check widget gallery">
+On iOS 17 and earlier:
+
+1. Long-press empty space on the home screen
+2. Tap the "+" button (top-left)
+3. Search for your app name
+4. Select your widget
+</Accordion>
+
+<Accordion title="Verify widget is installed">
+Check that your widget target built successfully:
+
+```bash
+# Check build products
+ls -la ios/build/Build/Products/Debug-iphonesimulator/
+```
+
+You should see your widget extension (`.appex` file).
+</Accordion>
+
+### CocoaPods Errors
+
+<Accordion title="CocoaPods version too old">
+This plugin requires CocoaPods 1.16.2 or later:
+
+```bash
+# Check version
+pod --version
+
+# Update if needed
+gem install cocoapods
+
+# Or with Homebrew
+brew upgrade cocoapods
+```
+
+Also ensure Ruby 3.2.0+:
+
+```bash
+ruby --version
+```
+</Accordion>
+
+<Accordion title="pods.rb not being evaluated">
+Ensure:
+
+1. The file is named exactly `pods.rb` (case-sensitive)
+2. It's in the repository root (not in `/ios` or `/targets`)
+3. The target name matches your directory name exactly
+4. You've run `npx expo prebuild --clean` after creating it
+
+Test by adding a debug line:
+
+```rb
+puts "pods.rb is being evaluated!"
+```
+
+You should see this during `pod install`.
+</Accordion>
+
+<Accordion title="Pod install fails">
+Try these steps in order:
+
+```bash
+# Clear Pods cache
+rm -rf ios/Pods ios/Podfile.lock
+
+# Clear CocoaPods cache
+pod cache clean --all
+
+# Prebuild fresh
+npx expo prebuild --clean
+
+# Install
+cd ios && pod install
+```
+
+If that doesn't work, check the Podfile for syntax errors:
+
+```bash
+cat ios/Podfile
+```
+</Accordion>
+
+### Compilation Errors
+
+<Accordion title="Swift compiler errors">
+Swift compiler errors in widgets are often caused by React Native's uncompiled sources.
+
+**Solution 1**: Use the blank template (dev only)
+
+```bash
+npx expo prebuild --template ./node_modules/@bacons/apple-targets/prebuild-blank.tgz --clean
+```
+
+**Solution 2**: Increase build memory
+
+In Xcode:
+1. Product > Scheme > Edit Scheme
+2. Build > Build Options
+3. Enable "Debug Information Format" > "DWARF"
+4. Disable "Enable Bitcode"
+</Accordion>
+
+<Accordion title="Cannot find type in scope">
+If Swift can't find types from `_shared` files:
+
+1. Verify the file is in `_shared` directory
+2. Run `npx expo prebuild --clean`
+3. Check file target membership in Xcode:
+   - Select the file
+   - Open File Inspector (⌥⌘1)
+   - Ensure both targets are checked
+</Accordion>
+
+<Accordion title="Duplicate symbol errors">
+Multiple targets compiling the same file:
+
+```
+duplicate symbol '_OBJC_CLASS_$_MyClass'
+```
+
+This happens when:
+- A file is in both a target directory AND `_shared`
+- Multiple `_shared` directories define the same type
+
+**Solution**: Move the file to only one location, typically `_shared` if it needs to be in multiple targets.
+</Accordion>
+
+## Runtime Errors
+
+### App Clip Crashes
+
+<Accordion title="Crash on launch from TestFlight">
+You may need [this React Native patch](https://github.com/facebook/react-native/pull/47000) for App Clips launched from TestFlight.
+
+**Workaround**: Add App Clip experiences in App Store Connect first. The App Clip will launch correctly when invoked through an experience.
+</Accordion>
+
+<Accordion title="expo-updates crash in App Clip">
+App Clips should NOT include `expo-updates`:
+
+```json
+// package.json
+{
+  "dependencies": {
+    // Remove expo-updates for App Clip projects
+    // "expo-updates": "..."
+  }
+}
+```
+
+The over-the-air update mechanism conflicts with App Clip constraints.
+</Accordion>
+
+<Accordion title="Bundle not found error">
+If React Native can't find the JS bundle in your App Clip:
+
+1. Verify `exportJs: true` in target config
+2. Ensure you're building in Release mode
+3. Check the bundle exists:
+
+```bash
+ls -la ios/build/Build/Products/Release-iphonesimulator/YourApp.app/*.appex/main.jsbundle
+```
+
+4. Verify your `pods.rb` includes React Native dependencies
+</Accordion>
+
+### Widget Not Updating
+
+<Accordion title="Widget shows old data">
+Force reload the widget from your app:
+
+```js
+import { ExtensionStorage } from '@bacons/apple-targets';
+
+// Reload all widgets
+ExtensionStorage.reloadWidget();
+
+// Or reload a specific widget
+ExtensionStorage.reloadWidget('com.yourapp.widget');
+```
+</Accordion>
+
+<Accordion title="Shared data not syncing">
+Check App Groups configuration:
+
+1. Verify the App Group ID matches in both targets:
+   - Main app: `app.json` > `ios.entitlements`
+   - Widget: `expo-target.config.js` > `entitlements`
+
+2. Use the exact same App Group identifier:
+
+```js
+// Main app (app.json)
+{
+  "ios": {
+    "entitlements": {
+      "com.apple.security.application-groups": ["group.com.yourapp.data"]
+    }
+  }
+}
+
+// Widget (expo-target.config.js)
+module.exports = {
+  type: "widget",
+  entitlements: {
+    "com.apple.security.application-groups": ["group.com.yourapp.data"]
+  }
+};
+```
+
+3. Check that both targets are signed with the same team
+</Accordion>
+
+## Code Signing Issues
+
+<Accordion title="Provisioning profile errors">
+For first-time setup:
+
+1. Run `npx expo prebuild --clean`
+2. Open Xcode: `xed ios`
+3. Select each target
+4. Go to "Signing & Capabilities"
+5. Select your team for each target
+6. Let Xcode create provisioning profiles
+
+This ensures the initial signing is correct before EAS Build.
+</Accordion>
+
+<Accordion title="App Clip signing issues">
+App Clip codesigning is complex. For EAS Build:
+
+1. Ensure all targets use the same Apple Team ID
+2. Create provisioning profiles for each target in Apple Developer Portal
+3. App Clips need parent application identifier entitlement:
+
+```xml
+<!-- Auto-generated for App Clips -->
+<key>com.apple.developer.parent-application-identifiers</key>
+<array>
+    <string>$(AppIdentifierPrefix)com.yourapp.bundle</string>
+</array>
+```
+
+This is added automatically by the plugin.
+</Accordion>
+
+<Accordion title="Mismatched bundle identifiers">
+Ensure consistent bundle IDs:
+
+```js
+// Main app (app.json)
+{
+  "ios": {
+    "bundleIdentifier": "com.yourcompany.yourapp"
+  }
+}
+
+// Extension (expo-target.config.js)
+module.exports = {
+  type: "widget",
+  bundleIdentifier: ".widget",  // Dot-prefix appends to main bundle ID
+};
+// Results in: com.yourcompany.yourapp.widget
+```
+</Accordion>
+
+## Development Workflow Issues
+
+<Accordion title="Changes not appearing after edit">
+Depends on what you changed:
+
+**Swift/native code changes:**
+- Just rebuild in Xcode (⌘B)
+- No prebuild needed
+
+**Target config changes:**
+- Run `npx expo prebuild --clean`
+- Examples: changing `type`, adding `frameworks`, updating `entitlements`
+
+**Adding/removing files in `_shared`:**
+- Run `npx expo prebuild --clean`
+- Content changes don't need prebuild
+
+**Info.plist changes:**
+- Just rebuild in Xcode
+- Info.plist is not managed by prebuild
+</Accordion>
+
+<Accordion title="Metro connection failing in extension">
+Extensions with React Native need to connect to Metro during development:
+
+1. Ensure Metro is running: `npx expo start`
+2. Check Info.plist has App Transport Security exception:
+
+```xml
+<key>NSAppTransportSecurity</key>
+<dict>
+    <key>NSAllowsArbitraryLoads</key>
+    <true/>
+</dict>
+```
+
+3. Verify device and dev machine are on the same network
+4. Try connecting by IP address if localhost fails
+</Accordion>
+
+<Accordion title="Hot reload not working">
+Hot reload doesn't work in extensions. You must:
+
+1. Save your changes
+2. Rebuild in Xcode (⌘B)
+3. Reinstall the app
+
+This is a React Native limitation for extensions.
+</Accordion>
+
+## EAS Build Issues
+
+<Accordion title="Build succeeds locally but fails on EAS">
+Common causes:
+
+1. **Credentials not configured**: Add provisioning profiles for all targets
+2. **CocoaPods version mismatch**: Pin Ruby version in `eas.json`
+3. **Missing secrets**: Environment variables not set in EAS
+
+Check the build logs for specific errors.
+</Accordion>
+
+<Accordion title="Target not included in IPA">
+Verify the target is embedded in the main app:
+
+1. In Xcode, select the main app target
+2. Go to "General" tab
+3. Check "Frameworks, Libraries, and Embedded Content"
+4. Your extension should be listed as "Embedded"
+
+If missing, run `npx expo prebuild --clean`.
+</Accordion>
+
+## Advanced Debugging
+
+<Accordion title="Enable verbose prebuild logging">
+```bash
+DEBUG=expo:* npx expo prebuild --clean
+```
+
+This shows detailed logs about what the plugin is doing.
+</Accordion>
+
+<Accordion title="Inspect Xcode project file">
+The plugin modifies the `.pbxproj` file. To see raw changes:
+
+```bash
+git diff ios/YourApp.xcodeproj/project.pbxproj
+```
+
+Useful for debugging why targets aren't configured correctly.
+</Accordion>
+
+<Accordion title="Test target in isolation">
+Build just one target to isolate issues:
+
+```bash
+cd ios
+xcodebuild -workspace YourApp.xcworkspace \
+  -scheme your-target \
+  -sdk iphonesimulator \
+  -configuration Debug \
+  build
+```
+
+Replace `your-target` with your extension's target name.
+</Accordion>
+
+## Getting Help
+
+If you're still stuck:
+
+1. **Check the example apps** in the repository for working configurations
+2. **Search GitHub issues**: [github.com/evanbacon/expo-apple-targets/issues](https://github.com/evanbacon/expo-apple-targets/issues)
+3. **Ask on Expo Forums**: [forums.expo.dev](https://forums.expo.dev)
+4. **File a bug report** with:
+   - Minimal reproduction
+   - Full error logs
+   - Xcode version
+   - Expo SDK version
+
+<Tip>
+When asking for help, always include:
+- Your target type
+- Full error message
+- Output of `npx expo-env-info`
+- Relevant config files (`expo-target.config.js`, `app.json`)
+</Tip>
+
+## Related Documentation
+
+- [CocoaPods Integration](/advanced/cocoapods)
+- [Shared Files](/advanced/shared-files)
+- [JavaScript Bundling](/advanced/export-js)
+- [Custom Frameworks](/advanced/custom-frameworks)

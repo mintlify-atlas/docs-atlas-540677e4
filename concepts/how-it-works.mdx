@@ -1,0 +1,221 @@
+---
+title: How It Works
+description: Understanding the config plugin architecture and Continuous Native Generation workflow for Apple Targets
+---
+
+## Overview
+
+Expo Apple Targets leverages **Continuous Native Generation (CNG)** to keep your target source files outside the generated iOS project. This enables you to develop native Apple extensions and targets while maintaining all the benefits of Expo's automated workflow.
+
+## The Magic `/targets` Directory
+
+The plugin uses a special directory structure where each subdirectory in `/targets` represents a separate Apple target:
+
+```
+project-root/
+├── targets/
+│   ├── widget/
+│   │   ├── expo-target.config.js
+│   │   ├── Info.plist
+│   │   └── Widget.swift
+│   ├── clip/
+│   │   ├── expo-target.config.js
+│   │   └── ClipApp.swift
+│   └── share/
+│       ├── expo-target.config.js
+│       └── ShareViewController.swift
+├── ios/
+└── app.json
+```
+
+When you run `npx expo prebuild`, the plugin:
+
+1. **Discovers targets** - Scans for `expo-target.config.@(json|js)` files in the targets directory
+2. **Evaluates configuration** - Processes each config file (supports both objects and functions)
+3. **Generates Xcode project** - Creates native targets and links them to your source files
+4. **Preserves your code** - All changes you make inside the `expo:targets` folder in Xcode are saved outside the `ios` directory
+
+<Info>
+The `expo:targets` folder in Xcode is a **virtual folder** that links to your actual source files in the `/targets` directory. Changes are bidirectionally synced.
+</Info>
+
+## Config Plugin Architecture
+
+The plugin is built using Expo's Config Plugin system and consists of several key components:
+
+### 1. Target Discovery (`withTargetsDir`)
+
+The main config plugin scans your project for target configurations:
+
+```typescript
+// From config-plugin.ts:38-42
+const targets = globSync(`${root}/${match}/expo-target.config.@(json|js)`, {
+  cwd: projectRoot,
+  absolute: true,
+});
+```
+
+Each discovered config is evaluated and processed:
+
+```typescript
+// From config-plugin.ts:44-60
+targets.forEach((configPath) => {
+  const targetConfig = require(configPath);
+  let evaluatedTargetConfigObject = targetConfig;
+  
+  // If it's a function, evaluate it
+  if (typeof targetConfig === "function") {
+    evaluatedTargetConfigObject = targetConfig(config);
+  }
+  
+  config = withWidget(config, {
+    appleTeamId,
+    ...evaluatedTargetConfigObject,
+    directory: path.relative(projectRoot, path.dirname(configPath)),
+    configPath,
+  });
+});
+```
+
+### 2. Target Processing (`withWidget`)
+
+For each target, the plugin:
+
+- Sanitizes the target name for Xcode compatibility
+- Generates bundle identifiers (supports `.` prefix for relative IDs)
+- Processes entitlements with automatic defaults
+- Creates asset catalogs for icons, colors, and images
+- Applies target-specific Xcode configurations
+
+### 3. Xcode Manipulation (`withXcodeChanges`)
+
+The plugin uses `@bacons/xcode` to manipulate the project file:
+
+- Creates `PBXNativeTarget` instances
+- Configures build settings and configurations
+- Links frameworks and dependencies
+- Sets up file system synchronized groups
+- Manages entitlements and Info.plist files
+
+<Note>
+The plugin uses **PBXFileSystemSynchronizedRootGroup**, a modern Xcode feature that automatically tracks file changes in a directory without requiring manual project file updates.
+</Note>
+
+## Continuous Native Generation
+
+CNG is a workflow where native project files are treated as **build artifacts** rather than source code:
+
+### Traditional Workflow
+```
+Edit native code → Commit ios/ directory → Risk merge conflicts
+```
+
+### CNG Workflow
+```
+Edit target config → Run prebuild → Generate clean ios/ directory
+```
+
+### Key Benefits
+
+1. **No merge conflicts** - The `ios` directory can be gitignored
+2. **Reproducible builds** - Same config always generates the same project
+3. **Easy upgrades** - Update Expo SDK without manual native migration
+4. **Version control** - Only commit your source files and config
+
+### The Virtual `expo:targets` Folder
+
+When you open Xcode, you'll see an `expo:targets` group in the project navigator:
+
+```
+Project
+├── expo:targets/          ← Virtual folder
+│   ├── widget/           ← Links to ../targets/widget/
+│   ├── clip/             ← Links to ../targets/clip/
+│   └── _shared/          ← Links to ../targets/_shared/
+├── ProjectName/
+└── Pods/
+```
+
+This folder is created by the plugin at `with-xcode-changes.ts:594-617`:
+
+```typescript
+const PROTECTED_GROUP_NAME = "expo:targets";
+
+function ensureProtectedGroup(
+  project: XcodeProject,
+  relativePath = "../targets",
+) {
+  const protectedGroup =
+    hasProtectedGroup ??
+    PBXGroup.create(project, {
+      name: PROTECTED_GROUP_NAME,
+      path: relativePath,
+      sourceTree: "<group>",
+    });
+  
+  return protectedGroup;
+}
+```
+
+<Warning>
+Any changes made **outside** the `expo:targets` directory in Xcode will be overwritten when you run `npx expo prebuild --clean`. Always edit target-specific settings through the config files or within the `expo:targets` folder.
+</Warning>
+
+## File Synchronization
+
+The plugin uses Xcode's file system synchronization feature to automatically track changes:
+
+```typescript
+// From with-xcode-changes.ts:429-451
+syncRootGroup = PBXFileSystemSynchronizedRootGroup.create(project, {
+  path: path.basename(props.cwd),
+  exceptions: [
+    PBXFileSystemSynchronizedBuildFileExceptionSet.create(project, {
+      target: targetToUpdate,
+      membershipExceptions: [
+        "Info.plist",
+        path.relative(magicCwd, props.configPath),
+      ].sort(),
+    }),
+  ],
+  explicitFileTypes: {},
+  explicitFolders: [...explicitFolders],
+  sourceTree: "<group>",
+});
+```
+
+This means:
+- Add a new `.swift` file → Xcode automatically includes it
+- Delete a file → Xcode automatically removes it
+- Rename a file → Xcode automatically updates references
+
+## Build Process
+
+When you build your app:
+
+1. Xcode compiles the main app target
+2. Each extension target is built independently
+3. Extension targets are embedded into the main app bundle
+4. Code signing is applied to each target
+5. The final `.ipa` contains all targets
+
+```
+YourApp.app/
+├── YourApp (main binary)
+├── PlugIns/
+│   ├── widget.appex       ← Widget extension
+│   └── share.appex        ← Share extension
+└── AppClips/
+    └── clip.app           ← App Clip
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Target Config" icon="gear" href="/concepts/target-config">
+    Learn about expo-target.config.js structure and options
+  </Card>
+  <Card title="Entitlements" icon="shield-check" href="/concepts/entitlements">
+    Understand entitlements and app groups
+  </Card>
+</CardGroup>

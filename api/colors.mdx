@@ -1,0 +1,376 @@
+---
+title: 'Colors'
+description: 'Using the colors system to add custom color assets to your targets'
+---
+
+The `colors` property in your target configuration allows you to define custom color assets that are added to the target's `Assets.xcassets`. These colors can be used in your Swift code and support both light and dark mode.
+
+## Basic Usage
+
+Define colors in your `expo-target.config.js`:
+
+```js
+module.exports = {
+  type: "widget",
+  colors: {
+    // Simple color (used in both light and dark mode)
+    primary: "#FF0000",
+    
+    // Dynamic color with light and dark variants
+    secondary: {
+      light: "#FF0000",
+      dark: "#0000FF"
+    },
+    
+    // Special colors for widgets
+    $accent: "steelblue",
+    $widgetBackground: "dodgerblue"
+  }
+};
+```
+
+## Color Formats
+
+### Simple Colors
+
+Provide a CSS color string for a color that looks the same in light and dark mode:
+
+```js
+colors: {
+  primary: "#FF0000",
+  secondary: "rgb(255, 0, 0)",
+  accent: "red",
+  brand: "steelblue"
+}
+```
+
+Supported formats:
+- Hex: `"#FF0000"`, `"#F00"`
+- RGB: `"rgb(255, 0, 0)"`
+- RGBA: `"rgba(255, 0, 0, 0.5)"`
+- Named colors: `"red"`, `"blue"`, `"steelblue"`, etc.
+
+### Dynamic Colors
+
+Provide separate colors for light and dark appearance:
+
+```js
+colors: {
+  background: {
+    light: "#FFFFFF",
+    dark: "#000000"
+  },
+  text: {
+    light: "#000000",
+    dark: "#FFFFFF"
+  }
+}
+```
+
+<ParamField path="light" type="string" required>
+  The color to use in light mode.
+</ParamField>
+
+<ParamField path="dark" type="string">
+  The color to use in dark mode. If omitted, the `light` color is used in both modes.
+</ParamField>
+
+## Using Colors in Swift
+
+Colors are accessible as named assets in SwiftUI and UIKit:
+
+<Tabs>
+  <Tab title="SwiftUI">
+    ```swift
+    import SwiftUI
+
+    struct MyWidgetView: View {
+        var body: some View {
+            VStack {
+                Text("Hello")
+                    .foregroundColor(Color("primary"))
+                
+                Rectangle()
+                    .fill(Color("background"))
+            }
+        }
+    }
+    ```
+  </Tab>
+  <Tab title="UIKit">
+    ```swift
+    import UIKit
+
+    let primaryColor = UIColor(named: "primary")
+    let backgroundColor = UIColor(named: "background")
+
+    view.backgroundColor = backgroundColor
+    label.textColor = primaryColor
+    ```
+  </Tab>
+</Tabs>
+
+Colors automatically adapt to the user's appearance settings (light/dark mode) when using dynamic colors.
+
+## Special Color Names
+
+Certain color names have special meanings and are mapped to Xcode build settings:
+
+| Name                | Build Setting                                        | Purpose                                                                                                      |
+| ------------------- | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `$accent`           | `ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME`     | Sets the global accent color. In widgets, this is used for the tint color of buttons when editing the widget. |
+| `$widgetBackground` | `ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME` | Sets the background color of the widget.                                                                     |
+
+### $accent
+
+The global accent color is used throughout your extension. For widgets, it's particularly important as it tints interactive elements in the widget configuration interface.
+
+```js
+colors: {
+  $accent: "steelblue"
+  // or with dark mode
+  $accent: {
+    light: "steelblue",
+    dark: "lightblue"
+  }
+}
+```
+
+**SwiftUI:**
+```swift
+// Access via the Color.accentColor property
+Button("Edit") { }
+    .tint(.accentColor)
+```
+
+### $widgetBackground
+
+The widget background color sets the default background for your widget. This is primarily used by widget configuration interfaces.
+
+```js
+colors: {
+  $widgetBackground: "dodgerblue"
+  // or with dark mode
+  $widgetBackground: {
+    light: "#E0F7FF",
+    dark: "#1A1A2E"
+  }
+}
+```
+
+**Note:** You can still override these colors in your Swift code, but setting them via build settings ensures consistency and proper integration with the widget configuration UI.
+
+## Color Assets Generation
+
+When you run `expo prebuild`, the plugin automatically:
+
+1. Creates an `Assets.xcassets` directory in your target
+2. Generates a `.colorset` subdirectory for each color
+3. Creates a `Contents.json` file with the color definitions
+4. Converts CSS color strings to display-P3 color space
+5. Configures the appropriate Xcode build settings for special colors
+
+The generated structure looks like this:
+
+```
+targets/
+  MyWidget/
+    Assets.xcassets/
+      primary.colorset/
+        Contents.json
+      background.colorset/
+        Contents.json
+      $accent.colorset/
+        Contents.json
+```
+
+## Color Space
+
+Colors are generated using the **display-P3** color space by default, which provides a wider color gamut than sRGB and is the standard for Apple devices.
+
+The conversion from CSS colors to display-P3 is handled automatically. Colors are defined with RGBA components ranging from 0.0 to 1.0.
+
+## TypeScript Type Definitions
+
+```typescript
+type DynamicColor = {
+  light: string;
+  dark?: string;
+};
+
+type ColorConfig = Record<string, string | DynamicColor>;
+```
+
+## Complete Example
+
+Here's a complete example showing how to define and use colors in a widget:
+
+<Tabs>
+  <Tab title="Config">
+    ```js
+    // targets/MyWidget/expo-target.config.js
+    module.exports = {
+      type: "widget",
+      colors: {
+        // Brand colors
+        primary: "#007AFF",
+        secondary: "#5AC8FA",
+        
+        // Dynamic colors
+        background: {
+          light: "#FFFFFF",
+          dark: "#1C1C1E"
+        },
+        cardBackground: {
+          light: "#F2F2F7",
+          dark: "#2C2C2E"
+        },
+        text: {
+          light: "#000000",
+          dark: "#FFFFFF"
+        },
+        secondaryText: {
+          light: "#3C3C43",
+          dark: "#EBEBF5"
+        },
+        
+        // Widget-specific
+        $accent: "#007AFF",
+        $widgetBackground: {
+          light: "#F2F2F7",
+          dark: "#1C1C1E"
+        },
+        
+        // Gradient colors
+        gradient1: "#FF6B6B",
+        gradient2: "#4ECDC4"
+      }
+    };
+    ```
+  </Tab>
+  <Tab title="Swift">
+    ```swift
+    import SwiftUI
+    import WidgetKit
+
+    struct MyWidgetView: View {
+        var entry: Provider.Entry
+        
+        var body: some View {
+            ZStack {
+                // Background adapts to light/dark mode
+                Color("background")
+                
+                VStack(spacing: 12) {
+                    // Card with dynamic background
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Title")
+                            .font(.headline)
+                            .foregroundColor(Color("text"))
+                        
+                        Text("Subtitle")
+                            .font(.subheadline)
+                            .foregroundColor(Color("secondaryText"))
+                    }
+                    .padding()
+                    .background(Color("cardBackground"))
+                    .cornerRadius(12)
+                    
+                    // Gradient using custom colors
+                    LinearGradient(
+                        colors: [Color("gradient1"), Color("gradient2")],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                    .frame(height: 4)
+                    
+                    // Button uses accent color
+                    Button(intent: MyIntent()) {
+                        Label("Action", systemImage: "star.fill")
+                    }
+                    .tint(Color("primary"))
+                }
+                .padding()
+            }
+        }
+    }
+    ```
+  </Tab>
+</Tabs>
+
+## Best Practices
+
+### Always Support Dark Mode
+
+Provide dark mode variants for better user experience:
+
+```js
+colors: {
+  background: {
+    light: "#FFFFFF",
+    dark: "#000000"
+  }
+}
+```
+
+### Use Semantic Names
+
+Name colors based on their purpose, not their appearance:
+
+```js
+// Good
+colors: {
+  background: "#FFFFFF",
+  text: "#000000",
+  error: "#FF0000"
+}
+
+// Avoid
+colors: {
+  white: "#FFFFFF",
+  black: "#000000",
+  red: "#FF0000"
+}
+```
+
+### Maintain Contrast
+
+Ensure sufficient contrast between foreground and background colors for accessibility:
+
+```js
+colors: {
+  background: { light: "#FFFFFF", dark: "#000000" },
+  text: { light: "#000000", dark: "#FFFFFF" }  // High contrast
+}
+```
+
+### Set Widget Colors
+
+Always define `$accent` and `$widgetBackground` for widgets:
+
+```js
+colors: {
+  $accent: "#007AFF",
+  $widgetBackground: { light: "#F2F2F7", dark: "#1C1C1E" }
+}
+```
+
+## Troubleshooting
+
+### Colors not showing up
+
+1. Make sure you've run `expo prebuild` after adding colors
+2. Check that the color name is correctly spelled in Swift
+3. Verify the `Assets.xcassets` directory exists in your target folder
+
+### Colors look wrong in dark mode
+
+1. Ensure you've provided a `dark` variant
+2. Test on an actual device or simulator with dark mode enabled
+3. Check the color values in the generated `Contents.json` files
+
+### Accent color not working
+
+1. Make sure you're using `$accent` (with the `$` prefix)
+2. Verify the `ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME` build setting is set
+3. Check that the colorset was generated in `Assets.xcassets`

@@ -1,0 +1,331 @@
+---
+title: App extensions
+description: Share extensions, Photo editing, Action extensions, and system integrations
+---
+
+App extensions let users extend your app's functionality within other apps and system contexts. This page covers common extension types beyond widgets, App Clips, and specialized categories.
+
+## Share extensions
+
+Share extensions appear in the iOS Share Sheet, allowing users to share content to your app from any app.
+
+### Extension point
+
+| Property | Value |
+| --- | --- |
+| **Type** | `share` |
+| **Extension Point** | `com.apple.share-services` |
+| **Frameworks** | None (can use React Native with pods.rb) |
+| **App Groups** | Enabled by default |
+| **Embedded Swift** | Yes |
+
+### Creating a share extension
+
+```bash
+npx create-target share
+```
+
+Configure accepted content types in `Info.plist`:
+
+```xml
+<key>NSExtensionAttributes</key>
+<dict>
+  <key>NSExtensionActivationRule</key>
+  <dict>
+    <key>NSExtensionActivationSupportsWebURLWithMaxCount</key>
+    <integer>1</integer>
+    <key>NSExtensionActivationSupportsImageWithMaxCount</key>
+    <integer>10</integer>
+  </dict>
+</dict>
+```
+
+See the [Share Extensions guide](/guides/share-extensions) for implementation details.
+
+## Action extensions
+
+Action extensions appear in the Share Sheet as headless actions that process content.
+
+### Extension point
+
+| Property | Value |
+| --- | --- |
+| **Type** | `action` |
+| **Extension Point** | `com.apple.services` |
+| **Frameworks** | None |
+
+### Creating an action
+
+```bash
+npx create-target action
+```
+
+Actions can run JavaScript on web pages:
+
+```javascript
+// targets/action/assets/index.js
+class Action {
+  run({ extensionName, completionFunction }) {
+    // Process the page content
+    const data = { title: document.title };
+    completionFunction(data);
+  }
+  
+  finalize() {
+    // Runs after native code completes
+  }
+}
+
+window.ExtensionPreprocessingJS = new Action();
+```
+
+Ensure `NSExtensionJavaScriptPreprocessingFile: "index"` in Info.plist.
+
+## Photo editing extensions
+
+Photo editing extensions appear in the Photos app editing flow.
+
+### Extension point
+
+| Property | Value |
+| --- | --- |
+| **Type** | `photo-editing` |
+| **Extension Point** | `com.apple.photo-editing` |
+| **Frameworks** | `Photos`, `PhotosUI` |
+
+```bash
+npx create-target photo-editing
+```
+
+Implement `PHContentEditingController` protocol to provide editing UI.
+
+## Spotlight extensions
+
+Spotlight extensions index your app's content for system search.
+
+### Extension point
+
+| Property | Value |
+| --- | --- |
+| **Type** | `spotlight` |
+| **Extension Point** | `com.apple.spotlight.import` |
+| **Frameworks** | None |
+| **Embedded Swift** | Yes |
+
+```bash
+npx create-target spotlight
+```
+
+Populate the search index from the extension:
+
+```swift
+import CoreSpotlight
+
+let attributes = CSSearchableItemAttributeSet(itemContentType: kUTTypeText as String)
+attributes.title = "My Item"
+attributes.contentDescription = "Description"
+
+let item = CSSearchableItem(
+  uniqueIdentifier: "com.myapp.item.1",
+  domainIdentifier: "items",
+  attributeSet: attributes
+)
+
+CSSearchableIndex.default().indexSearchableItems([item])
+```
+
+## CoreSpotlight delegate
+
+The CoreSpotlight delegate extension handles search result taps.
+
+### Extension point
+
+| Property | Value |
+| --- | --- |
+| **Type** | `spotlight-delegate` |
+| **Extension Point** | `com.apple.spotlight.index` |
+| **Frameworks** | `CoreSpotlight` |
+
+```bash
+npx create-target spotlight-delegate
+```
+
+## Siri intent extensions
+
+Intent extensions handle Siri requests and shortcuts.
+
+### Intent extension
+
+| Property | Value |
+| --- | --- |
+| **Type** | `intent` |
+| **Extension Point** | `com.apple.intents-service` |
+| **Frameworks** | `Intents` |
+| **Embedded Swift** | Yes |
+
+```bash
+npx create-target intent
+```
+
+### Intent UI extension
+
+| Property | Value |
+| --- | --- |
+| **Type** | `intent-ui` |
+| **Extension Point** | `com.apple.intents-ui-service` |
+| **Frameworks** | `IntentsUI` |
+| **Embedded Swift** | Yes |
+
+```bash
+npx create-target intent-ui
+```
+
+### App Intent extension (iOS 16+)
+
+| Property | Value |
+| --- | --- |
+| **Type** | `app-intent` |
+| **Extension Point** | `com.apple.appintents-extension` |
+| **Product Type** | `com.apple.product-type.extensionkit-extension` |
+| **Frameworks** | `AppIntents` |
+
+```bash
+npx create-target app-intent
+```
+
+Modern App Intents use the `AppIntents` framework instead of the legacy Intents framework.
+
+## Quick Look extensions
+
+Quick Look extensions provide custom previews and thumbnails.
+
+### Thumbnail extension
+
+| Property | Value |
+| --- | --- |
+| **Type** | `quicklook-thumbnail` |
+| **Extension Point** | `com.apple.quicklook.thumbnail` |
+| **Frameworks** | `QuickLookThumbnailing` |
+| **Embedded Swift** | Yes |
+
+```bash
+npx create-target quicklook-thumbnail
+```
+
+### Preview extension
+
+| Property | Value |
+| --- | --- |
+| **Type** | `quicklook-preview` |
+| **Extension Point** | `com.apple.quicklook.preview` |
+| **Frameworks** | `QuickLook` |
+| **Embedded Swift** | Yes |
+
+```bash
+npx create-target quicklook-preview
+```
+
+## File Provider extensions
+
+File Provider extensions integrate with the Files app.
+
+### File Provider
+
+| Property | Value |
+| --- | --- |
+| **Type** | `file-provider` |
+| **Extension Point** | `com.apple.fileprovider-nonui` |
+| **Frameworks** | `UniformTypeIdentifiers` |
+| **App Groups** | Enabled by default |
+
+```bash
+npx create-target file-provider
+```
+
+### File Provider UI
+
+| Property | Value |
+| --- | --- |
+| **Type** | `file-provider-ui` |
+| **Extension Point** | `com.apple.fileprovider-actionsui` |
+| **Frameworks** | `FileProviderUI` |
+
+```bash
+npx create-target file-provider-ui
+```
+
+## Other extensions
+
+### Keyboard extension
+
+| Property | Value |
+| --- | --- |
+| **Type** | `keyboard` |
+| **Extension Point** | `com.apple.keyboard-service` |
+| **App Groups** | Enabled by default |
+| **Embedded Swift** | Yes |
+
+```bash
+npx create-target keyboard
+```
+
+Custom keyboards replace the system keyboard.
+
+### Credentials Provider
+
+| Property | Value |
+| --- | --- |
+| **Type** | `credentials-provider` |
+| **Extension Point** | `com.apple.authentication-services-credential-provider-ui` |
+
+```bash
+npx create-target credentials-provider
+```
+
+Password manager integration with AutoFill.
+
+### Matter extension
+
+| Property | Value |
+| --- | --- |
+| **Type** | `matter` |
+| **Extension Point** | `com.apple.matter.support.extension.device-setup` |
+| **Embedded Swift** | Yes |
+
+```bash
+npx create-target matter
+```
+
+Smart home device setup for Matter accessories.
+
+### Background download
+
+| Property | Value |
+| --- | --- |
+| **Type** | `bg-download` |
+| **Extension Point** | `com.apple.background-asset-downloader-extension` |
+| **App Groups** | Enabled by default |
+| **Embedded Swift** | Yes |
+
+```bash
+npx create-target bg-download
+```
+
+Background asset downloads on managed devices.
+
+## Learn more
+
+<CardGroup cols={2}>
+  <Card title="Share extensions" icon="share" href="/guides/share-extensions">
+    Build share extensions
+  </Card>
+  <Card title="Complete target list" icon="list" href="/targets/complete-list">
+    All 40+ target types
+  </Card>
+  <Card title="Target config" icon="gear" href="/concepts/target-config">
+    Configure target settings
+  </Card>
+  <Card title="Entitlements" icon="key" href="/concepts/entitlements">
+    Configure extension entitlements
+  </Card>
+</CardGroup>

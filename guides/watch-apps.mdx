@@ -1,0 +1,386 @@
+---
+title: Watch Apps
+description: Build companion watchOS apps that run alongside your iOS app
+---
+
+Watch apps provide a native watchOS experience that runs on Apple Watch. With Expo Apple Targets, you can build watchOS apps using SwiftUI while keeping your source code outside the generated iOS directory.
+
+<Note>
+Watch apps require a paired iOS app and cannot run standalone in this configuration.
+</Note>
+
+## Getting Started
+
+<Steps>
+  <Step title="Generate a watch app target">
+    ```bash
+    npx create-target watch
+    ```
+
+    This creates `targets/watch/` with:
+    - `expo-target.config.js` — Target configuration
+    - `index.swift` — App entry point
+    - `content.swift` — Main view
+    - `preview/` — Preview assets for Xcode
+  </Step>
+
+  <Step title="Configure the target">
+    ```js targets/watch/expo-target.config.js
+    /** @type {import('@bacons/apple-targets/app.plugin').Config} */
+    module.exports = {
+      type: "watch",
+      icon: "../../assets/icon.png",
+      
+      // Share data with the iOS app
+      entitlements: {
+        "com.apple.security.application-groups": ["group.com.yourapp.data"],
+      },
+      
+      // watchOS deployment target
+      deploymentTarget: "9.0",
+    };
+    ```
+  </Step>
+
+  <Step title="Run prebuild">
+    ```bash
+    npx expo prebuild -p ios --clean
+    ```
+  </Step>
+
+  <Step title="Develop in Xcode">
+    ```bash
+    xed ios
+    ```
+
+    Select the watch app scheme and choose a paired watchOS simulator to run your app.
+  </Step>
+</Steps>
+
+## Watch App Implementation
+
+The generated template provides a basic SwiftUI app:
+
+<CodeGroup>
+```swift targets/watch/index.swift
+import SwiftUI
+
+@main
+struct watchEntry: App {
+    var body: some Scene {
+        WindowGroup {
+            ContentView()
+        }
+    }
+}
+```
+
+```swift targets/watch/content.swift
+import SwiftUI
+
+struct ContentView: View {
+    var body: some View {
+        VStack {
+            Image(systemName: "globe")
+                .imageScale(.large)
+                .foregroundColor(.accentColor)
+            Text("Hello, world!")
+        }
+        .padding()
+    }
+}
+
+struct ContentView_Previews: PreviewProvider {
+    static var previews: some View {
+        ContentView()
+    }
+}
+```
+</CodeGroup>
+
+## Building a Real Watch App
+
+Here's an example of a watch app that displays data from your iOS app:
+
+```swift targets/watch/content.swift
+import SwiftUI
+
+struct ContentView: View {
+    @State private var count: Int = 0
+    
+    var body: some View {
+        VStack(spacing: 12) {
+            Text("Count")
+                .font(.caption)
+                .foregroundColor(.secondary)
+            
+            Text("\(count)")
+                .font(.system(size: 48, weight: .bold, design: .rounded))
+            
+            Button("Refresh") {
+                loadCount()
+            }
+            .buttonStyle(.borderedProminent)
+        }
+        .onAppear {
+            loadCount()
+        }
+    }
+    
+    func loadCount() {
+        let defaults = UserDefaults(suiteName: "group.com.yourapp.data")
+        count = defaults?.integer(forKey: "count") ?? 0
+    }
+}
+```
+
+## Communicating with Your iOS App
+
+Watch apps can share data with your iOS app using App Groups:
+
+### Setup App Groups
+
+<Steps>
+  <Step title="Add to main app">
+    ```json app.json
+    {
+      "expo": {
+        "ios": {
+          "entitlements": {
+            "com.apple.security.application-groups": ["group.com.yourapp.data"]
+          }
+        }
+      }
+    }
+    ```
+  </Step>
+
+  <Step title="Add to watch app">
+    ```js targets/watch/expo-target.config.js
+    module.exports = (config) => ({
+      type: "watch",
+      entitlements: {
+        "com.apple.security.application-groups":
+          config.ios.entitlements["com.apple.security.application-groups"],
+      },
+    });
+    ```
+  </Step>
+</Steps>
+
+### Write Data from React Native
+
+```tsx
+import { ExtensionStorage } from "@bacons/apple-targets";
+
+const storage = new ExtensionStorage("group.com.yourapp.data");
+
+// Update data that the watch can read
+storage.set("count", 42);
+storage.set("userName", "Evan");
+storage.set("lastUpdate", new Date().toISOString());
+```
+
+### Read Data in watchOS
+
+```swift
+let defaults = UserDefaults(suiteName: "group.com.yourapp.data")
+
+let count = defaults?.integer(forKey: "count") ?? 0
+let userName = defaults?.string(forKey: "userName") ?? "Unknown"
+let lastUpdate = defaults?.string(forKey: "lastUpdate") ?? "Never"
+```
+
+See the [Sharing Data guide](/guides/sharing-data) for more details.
+
+## Watch Connectivity
+
+For real-time communication between iOS and watchOS, use the `WatchConnectivity` framework:
+
+```swift targets/watch/connectivity.swift
+import WatchConnectivity
+
+class WatchConnectivityManager: NSObject, ObservableObject, WCSessionDelegate {
+    @Published var receivedMessage: String = "No message"
+    
+    override init() {
+        super.init()
+        
+        if WCSession.isSupported() {
+            let session = WCSession.default
+            session.delegate = self
+            session.activate()
+        }
+    }
+    
+    // Send message to iPhone
+    func sendMessage(_ message: [String: Any]) {
+        if WCSession.default.isReachable {
+            WCSession.default.sendMessage(message, replyHandler: nil)
+        }
+    }
+    
+    // Receive message from iPhone
+    func session(_ session: WCSession, didReceiveMessage message: [String : Any]) {
+        DispatchQueue.main.async {
+            if let text = message["text"] as? String {
+                self.receivedMessage = text
+            }
+        }
+    }
+    
+    func session(_ session: WCSession, activationDidCompleteWith activationState: WCSessionActivationState, error: Error?) {
+        // Handle activation
+    }
+}
+```
+
+Implement the same in your iOS app to enable two-way communication.
+
+<Warning>
+The React Native app must be running for `WCSession.isReachable` to return `true`. Use App Groups for persistent data.
+</Warning>
+
+## Watch Complications
+
+To add complications (widgets for watch faces), create a watch widget target:
+
+```bash
+npx create-target watch-widget
+```
+
+This creates a separate target for watch face complications that follows the same patterns as iOS widgets.
+
+## Custom Assets
+
+Add images and colors to your watch app:
+
+```js targets/watch/expo-target.config.js
+module.exports = {
+  type: "watch",
+  images: {
+    logo: "../../assets/logo.png",
+    background: "../../assets/background.png",
+  },
+  colors: {
+    $accent: "#007AFF",
+    primary: "#FF3B30",
+  },
+};
+```
+
+Use them in SwiftUI:
+
+```swift
+Image("logo")
+    .resizable()
+    .frame(width: 50, height: 50)
+
+Text("Hello")
+    .foregroundColor(Color("primary"))
+```
+
+## watchOS-Specific SwiftUI
+
+Take advantage of watchOS-specific views:
+
+### Digital Crown
+
+```swift
+struct ContentView: View {
+    @State private var scrollAmount = 0.0
+    
+    var body: some View {
+        VStack {
+            Text("\(scrollAmount, specifier: "%.1f")")
+        }
+        .focusable()
+        .digitalCrownRotation($scrollAmount)
+    }
+}
+```
+
+### Complications
+
+```swift
+struct ComplicationView: View {
+    var body: some View {
+        Text("42")
+            .font(.system(.body, design: .rounded).monospacedDigit())
+    }
+}
+```
+
+### List with Swipe Actions
+
+```swift
+List {
+    ForEach(items) { item in
+        Text(item.name)
+            .swipeActions {
+                Button("Delete", role: .destructive) {
+                    deleteItem(item)
+                }
+            }
+    }
+}
+```
+
+## Testing on Device
+
+To test on a real Apple Watch:
+
+1. Pair your Apple Watch with your iPhone
+2. Select your watch in Xcode's device list
+3. Build and run the watch scheme
+
+<Note>
+The first install on a real watch can take several minutes. Subsequent installs are faster.
+</Note>
+
+## Debugging
+
+### View Console Logs
+
+In Xcode, open Window > Devices and Simulators, select your watch, and click "Open Console" to see print statements.
+
+### SwiftUI Previews
+
+Use SwiftUI previews for rapid iteration:
+
+```swift
+struct ContentView_Previews: PreviewProvider {
+    static var previews: some View {
+        ContentView()
+            .previewDevice("Apple Watch Series 9 - 45mm")
+    }
+}
+```
+
+## Deployment Target
+
+Set the minimum watchOS version:
+
+```js
+module.exports = {
+  type: "watch",
+  deploymentTarget: "9.0", // watchOS 9.0+
+};
+```
+
+## Limitations
+
+<Warning>
+**No React Native support:** Watch apps must be built in pure Swift/SwiftUI. React Native does not support watchOS.
+</Warning>
+
+<Note>
+Watch apps in this configuration require a companion iOS app and cannot run independently.
+</Note>
+
+## Next Steps
+
+- Learn about [sharing data between targets](/guides/sharing-data)
+- Build [watch complications](/guides/widgets) with `watch-widget`
+- Read Apple's [watchOS documentation](https://developer.apple.com/watchos/)
+- Explore [WatchConnectivity framework](https://developer.apple.com/documentation/watchconnectivity)

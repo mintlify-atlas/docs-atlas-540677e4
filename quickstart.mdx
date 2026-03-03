@@ -1,80 +1,240 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quickstart
+description: Build your first iOS widget in minutes with Expo Apple Targets
 ---
 
-## Get started in three steps
+This guide will walk you through creating a home screen widget for your Expo app. You'll go from zero to a working widget that displays data from your React Native app.
 
-Get your documentation site running locally and make your first customization.
+<Note>
+Before starting, ensure you have **CocoaPods 1.16.2+**, **Xcode 16+**, and **Expo SDK 53+** installed. See the [installation guide](/installation) for details.
+</Note>
 
-### Step 1: Set up your local environment
+## Create your first widget
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
+<Steps>
+  <Step title="Generate a widget target">
+    Run the `create-target` CLI in your Expo project root:
+
+    ```bash
+    npx create-target widget
+    ```
+
+    This command will:
+    - Create a `/targets/widget` directory with Swift template files
+    - Install the `@bacons/apple-targets` package
+    - Add the Config Plugin to your `app.json`
+    - Generate an `expo-target.config.js` file
+
+    <Note>
+    You can also use `npx create-target` without arguments to see a list of all available target types.
+    </Note>
+  </Step>
+
+  <Step title="Configure your Apple Team ID (optional)">
+    If you know your Apple Team ID, add it to your `app.json`:
+
+    ```json app.json
+    {
+      "expo": {
+        "ios": {
+          "appleTeamId": "QQ57RJ5UTD",
+          "bundleIdentifier": "com.yourcompany.yourapp"
+        },
+        "plugins": ["@bacons/apple-targets"]
+      }
+    }
+    ```
+
+    You can find your Team ID in Xcode under **Signing & Capabilities**. If you don't have it now, you can set it later.
+  </Step>
+
+  <Step title="Generate the Xcode project">
+    Run prebuild to generate your iOS project with the widget target:
+
+    ```bash
+    npx expo prebuild -p ios --clean
+    ```
+
+    This creates the Xcode project and links your widget files to the `expo:targets/widget` virtual folder.
+  </Step>
+
+  <Step title="Open in Xcode">
+    Open your project in Xcode:
+
+    ```bash
+    xed ios
+    ```
+
+    Navigate to the **expo:targets** folder in the project navigator. You'll see your widget files there. Any changes you make here will be saved to `/targets/widget` in your project root.
+  </Step>
+
+  <Step title="Customize your widget">
+    Edit the widget configuration at `/targets/widget/expo-target.config.js`:
+
+    ```js targets/widget/expo-target.config.js
+    /** @type {import('@bacons/apple-targets/app.plugin').Config} */
+    module.exports = {
+      type: "widget",
+      icon: "./assets/widget-icon.png",
+      colors: {
+        $accent: "#007AFF",
+        $widgetBackground: "#F0F0F0",
+      },
+    };
+    ```
+
+    <Note>
+    The `$accent` color is used for button tints when editing the widget. The `$widgetBackground` sets the widget's background color.
+    </Note>
+  </Step>
+
+  <Step title="Build and test">
+    In Xcode:
+    1. Select the widget target from the scheme dropdown
+    2. Choose a simulator or device
+    3. Click **Run** (⌘R)
+
+    The widget will appear on your home screen. Long-press to add it if it doesn't show up automatically.
+
+    <Warning>
+    If the widget doesn't appear on the home screen, make sure you're using **iOS 18+**. You can long-press the app icon and select widget display options.
+    </Warning>
+  </Step>
+</Steps>
+
+## Share data between your app and widget
+
+Widgets can display data from your React Native app using App Groups and `NSUserDefaults`.
+
+### Configure App Groups
+
+First, define an App Group in your `app.json`:
+
+```json app.json
+{
+  "expo": {
+    "ios": {
+      "entitlements": {
+        "com.apple.security.application-groups": ["group.com.yourcompany.yourapp"]
+      }
+    }
+  }
+}
+```
+
+Then mirror it in your widget config:
+
+```js targets/widget/expo-target.config.js
+/** @type {import('@bacons/apple-targets/app.plugin').ConfigFunction} */
+module.exports = (config) => ({
+  type: "widget",
+  colors: {
+    $accent: "#007AFF",
+  },
+  entitlements: {
+    "com.apple.security.application-groups":
+      config.ios.entitlements["com.apple.security.application-groups"],
+  },
+});
+```
+
+### Set data from React Native
+
+In your Expo app, use the `ExtensionStorage` API:
+
+```tsx App.tsx
+import { ExtensionStorage } from "@bacons/apple-targets";
+
+// Create a storage instance with your App Group ID
+const storage = new ExtensionStorage("group.com.yourcompany.yourapp");
+
+export default function App() {
+  const [count, setCount] = React.useState(0);
+
+  const incrementCount = () => {
+    const newCount = count + 1;
+    setCount(newCount);
     
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
+    // Save to shared storage
+    storage.set("count", newCount);
     
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
+    // Reload the widget
+    ExtensionStorage.reloadWidget();
+  };
 
-### Step 2: Deploy your changes
+  return (
+    <View>
+      <Text>Count: {count}</Text>
+      <Button title="Increment" onPress={incrementCount} />
+    </View>
+  );
+}
+```
 
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
+### Read data in Swift
+
+In your widget's Swift code, access the shared data:
+
+```swift targets/widget/widgets.swift
+let defaults = UserDefaults(suiteName: "group.com.yourcompany.yourapp")
+let count = defaults?.integer(forKey: "count") ?? 0
+
+struct widgetEntryView: View {
+    var entry: Provider.Entry
     
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+    var body: some View {
+        VStack {
+            Text("Count from app:")
+            Text("\(count)")
+                .font(.largeTitle)
+        }
+    }
+}
+```
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
-
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 3: Go live
-
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
+Run `npx expo prebuild --clean` after changing the config, then rebuild in Xcode.
 
 ## Next steps
 
-Now that you have your docs running, explore these key features:
-
 <CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
+  <Card title="Target configuration" icon="gear" href="/concepts/target-config">
+    Learn about colors, images, frameworks, and deployment targets
+  </Card>
+  <Card title="App Clips" icon="link" href="/guides/app-clips">
+    Build instant app experiences with App Clips
+  </Card>
+  <Card title="Code signing" icon="signature" href="/concepts/code-signing">
+    Understand code signing for extensions
+  </Card>
+  <Card title="Advanced topics" icon="book" href="/advanced/cocoapods">
+    Explore CocoaPods, shared files, and more
+  </Card>
 </CardGroup>
 
-<Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
-</Note>
+## Troubleshooting
+
+### Widget doesn't show on home screen
+
+- Make sure you're using iOS 18 or later
+- Long-press the app icon and select widget display options
+- Try clearing SwiftUI preview cache: `xcrun simctl --set previews delete all`
+
+### Build errors with SwiftUI previews
+
+React Native ships uncompiled, which can cause Swift compiler issues. Try:
+
+```bash
+npx expo prebuild --template ./node_modules/@bacons/apple-targets/prebuild-blank.tgz --clean
+```
+
+This creates a build without React Native for faster development. Don't use this for production.
+
+### Changes not appearing after prebuild
+
+If you modify `expo-target.config.js` or `app.json`, you must run:
+
+```bash
+npx expo prebuild --clean
+```
+
+Any changes outside the `expo:targets` folder in Xcode will be overwritten by prebuild.

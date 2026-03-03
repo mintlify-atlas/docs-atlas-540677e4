@@ -1,0 +1,322 @@
+---
+title: Complete target list
+description: All 40+ supported Apple extension types
+---
+
+Expo Apple Targets supports over 40 native Apple extension types. This page lists every supported target with its configuration details.
+
+## Quick reference
+
+<CardGroup cols={3}>
+  <Card title="Widgets & Activities" icon="grid-2" href="#widgets--live-activities">
+    widget, watch-widget
+  </Card>
+  <Card title="App Clips" icon="bolt" href="#app-clips">
+    clip
+  </Card>
+  <Card title="Watch Apps" icon="watch" href="#watch-apps">
+    watch, watch-widget
+  </Card>
+  <Card title="Share & Actions" icon="share-nodes" href="#sharing--actions">
+    share, action
+  </Card>
+  <Card title="Notifications" icon="bell" href="#notifications">
+    notification-content, notification-service
+  </Card>
+  <Card title="Siri & Intents" icon="microphone" href="#siri--intents">
+    intent, intent-ui, app-intent
+  </Card>
+  <Card title="Safari" icon="compass" href="#safari">
+    safari, content-blocker
+  </Card>
+  <Card title="Network" icon="network-wired" href="#network-extensions">
+    4 network extension types
+  </Card>
+  <Card title="Media & Files" icon="file" href="#media--files">
+    photo-editing, file-provider, broadcast
+  </Card>
+  <Card title="System Services" icon="gear" href="#system-services">
+    spotlight, quicklook, keyboard, credentials
+  </Card>
+  <Card title="Communication" icon="phone" href="#communication">
+    call-directory, message-filter
+  </Card>
+  <Card title="Education & Parental Controls" icon="graduation-cap" href="#education--parental-controls">
+    classkit, device-activity-monitor, shield
+  </Card>
+</CardGroup>
+
+## All target types
+
+### Widgets & Live Activities
+
+| Type | Display Name | Extension Point | Frameworks | App Groups |
+| --- | --- | --- | --- | --- |
+| `widget` | Widget | `com.apple.widgetkit-extension` | WidgetKit, SwiftUI, ActivityKit, AppIntents | ✓ |
+| `watch-widget` | Watch Widget | `com.apple.widgetkit-extension` (watch) | WidgetKit, SwiftUI | ✓ |
+
+**Use cases:** Home screen widgets, Lock Screen widgets, Live Activities, Dynamic Island, Control Center controls, watch face complications
+
+```bash
+npx create-target widget
+npx create-target watch-widget
+```
+
+### App Clips
+
+| Type | Display Name | Product Type | App Groups |
+| --- | --- | --- | --- |
+| `clip` | App Clip | `com.apple.product-type.application.on-demand-install-capable` | ✓ |
+
+**Use cases:** Instant app experiences from QR codes, NFC tags, App Clip codes, and Safari Smart Banners
+
+```bash
+npx create-target clip
+```
+
+### Watch Apps
+
+| Type | Display Name | Product Type | Embedded Swift |
+| --- | --- | --- | --- |
+| `watch` | Watch | `com.apple.product-type.application` | ✓ |
+
+**Use cases:** Companion watchOS apps
+
+```bash
+npx create-target watch
+```
+
+### Sharing & Actions
+
+| Type | Display Name | Extension Point | App Groups | Embedded Swift |
+| --- | --- | --- | --- | --- |
+| `share` | Share Extension | `com.apple.share-services` | ✓ | ✓ |
+| `action` | Action | `com.apple.services` | | |
+
+**Use cases:** Share Sheet integration, headless actions on selected content
+
+```bash
+npx create-target share
+npx create-target action
+```
+
+### Notifications
+
+| Type | Display Name | Extension Point | Frameworks |
+| --- | --- | --- | --- |
+| `notification-content` | Notification Content | `com.apple.usernotifications.content-extension` | UserNotifications, UserNotificationsUI |
+| `notification-service` | Notification Service | `com.apple.usernotifications.service` | UserNotifications |
+
+**Use cases:** Rich notification UI, media attachments, notification modification, decryption
+
+```bash
+npx create-target notification-content
+npx create-target notification-service
+```
+
+### Siri & Intents
+
+| Type | Display Name | Extension Point | Product Type | Frameworks | Embedded Swift |
+| --- | --- | --- | --- | --- | --- |
+| `intent` | Siri Intent | `com.apple.intents-service` | app-extension | Intents | ✓ |
+| `intent-ui` | Siri Intent UI | `com.apple.intents-ui-service` | app-extension | IntentsUI | ✓ |
+| `app-intent` | App Intent | `com.apple.appintents-extension` | extensionkit-extension | AppIntents | |
+
+**Use cases:** Siri Shortcuts, custom intents, App Shortcuts (iOS 16+)
+
+```bash
+npx create-target intent
+npx create-target intent-ui
+npx create-target app-intent
+```
+
+### Safari
+
+| Type | Display Name | Extension Point |
+| --- | --- | --- |
+| `safari` | Safari Extension | `com.apple.Safari.web-extension` |
+| `content-blocker` | Content Blocker | `com.apple.Safari.content-blocker` |
+
+**Use cases:** Web extensions, ad blockers, content filtering
+
+```bash
+npx create-target safari
+npx create-target content-blocker
+```
+
+### Network Extensions
+
+<Warning>
+  Network extensions require the Network Extensions entitlement from Apple Developer Support.
+</Warning>
+
+| Type | Display Name | Extension Point | Frameworks | Embedded Swift |
+| --- | --- | --- | --- | --- |
+| `network-packet-tunnel` | Network Extension: Packet Tunnel Provider | `com.apple.networkextension.packet-tunnel` | NetworkExtension | ✓ |
+| `network-app-proxy` | Network Extension: App Proxy | `com.apple.networkextension.app-proxy` | NetworkExtension | ✓ |
+| `network-dns-proxy` | Network Extension: DNS Proxy | `com.apple.networkextension.dns-proxy` | NetworkExtension | ✓ |
+| `network-filter-data` | Network Extension: Filter Data | `com.apple.networkextension.filter-data` | NetworkExtension | ✓ |
+
+**Use cases:** VPN, content filtering, DNS resolution, parental controls
+
+```bash
+npx create-target network-packet-tunnel
+npx create-target network-app-proxy
+npx create-target network-dns-proxy
+npx create-target network-filter-data
+```
+
+### Media & Files
+
+| Type | Display Name | Extension Point | Frameworks | App Groups | Embedded Swift |
+| --- | --- | --- | --- | --- | --- |
+| `photo-editing` | Photo Editing | `com.apple.photo-editing` | Photos, PhotosUI | | |
+| `file-provider` | File Provider | `com.apple.fileprovider-nonui` | UniformTypeIdentifiers | ✓ | |
+| `file-provider-ui` | File Provider UI | `com.apple.fileprovider-actionsui` | FileProviderUI | | |
+| `broadcast-upload` | Broadcast Upload | `com.apple.broadcast-services-upload` | ReplayKit | | |
+| `broadcast-setup-ui` | Broadcast Setup UI | `com.apple.broadcast-services-setupui` | ReplayKit | | |
+
+**Use cases:** Photos app editing, Files app integration, screen recording, ReplayKit
+
+```bash
+npx create-target photo-editing
+npx create-target file-provider
+npx create-target broadcast-upload
+```
+
+### System Services
+
+| Type | Display Name | Extension Point | Frameworks | App Groups | Embedded Swift |
+| --- | --- | --- | --- | --- | --- |
+| `spotlight` | Spotlight | `com.apple.spotlight.import` | | | ✓ |
+| `spotlight-delegate` | CoreSpotlight Delegate | `com.apple.spotlight.index` | CoreSpotlight | | |
+| `quicklook-thumbnail` | Quicklook Thumbnail | `com.apple.quicklook.thumbnail` | QuickLookThumbnailing | | ✓ |
+| `quicklook-preview` | Quick Look Preview | `com.apple.quicklook.preview` | QuickLook | | ✓ |
+| `keyboard` | Keyboard Extension | `com.apple.keyboard-service` | | ✓ | ✓ |
+| `credentials-provider` | Credentials Provider | `com.apple.authentication-services-credential-provider-ui` | | | |
+| `account-auth` | Account Auth | `com.apple.authentication-services-account-authentication-modification-ui` | | | |
+| `authentication-services` | Authentication Services | `com.apple.AppSSO.idp-extension` | AuthenticationServices | | |
+
+**Use cases:** Search indexing, file previews, custom keyboards, password managers, SSO
+
+```bash
+npx create-target spotlight
+npx create-target quicklook-thumbnail
+npx create-target keyboard
+npx create-target credentials-provider
+```
+
+### Communication
+
+| Type | Display Name | Extension Point | Frameworks |
+| --- | --- | --- | --- |
+| `call-directory` | Call Directory | `com.apple.callkit.call-directory` | CallKit |
+| `message-filter` | Message Filter | `com.apple.identitylookup.message-filter` | IdentityLookup |
+| `unwanted-communication` | Unwanted Communication Reporting | `com.apple.identitylookup.classification-ui` | IdentityLookup, IdentityLookupUI |
+
+**Use cases:** Caller ID, call blocking, SMS filtering, spam reporting
+
+```bash
+npx create-target call-directory
+npx create-target message-filter
+```
+
+### Education & Parental Controls
+
+| Type | Display Name | Extension Point | Frameworks |
+| --- | --- | --- | --- |
+| `classkit-context` | ClassKit Context Provider | `com.apple.classkit.context-provider` | ClassKit |
+| `device-activity-monitor` | Device Activity Monitor | `com.apple.deviceactivity.monitor-extension` | DeviceActivity |
+| `shield-action` | Shield Action | `com.apple.ManagedSettings.shield-action-service` | ManagedSettings |
+| `shield-config` | Shield Configuration | `com.apple.ManagedSettingsUI.shield-configuration-service` | ManagedSettings, ManagedSettingsUI |
+
+**Use cases:** Educational apps, Screen Time, app blocking, parental controls
+
+```bash
+npx create-target classkit-context
+npx create-target device-activity-monitor
+npx create-target shield-action
+```
+
+### Other Extensions
+
+| Type | Display Name | Extension Point | Frameworks | Embedded Swift |
+| --- | --- | --- | --- | --- |
+| `bg-download` | Background Download | `com.apple.background-asset-downloader-extension` | | ✓ |
+| `location-push` | Location Push | `com.apple.location.push.service` | | |
+| `matter` | Matter | `com.apple.matter.support.extension.device-setup` | | ✓ |
+| `virtual-conference` | Virtual Conference Provider | `com.apple.calendar.virtualconference` | | |
+| `print-service` | Print Service | `com.apple.printing.discovery` | | |
+| `smart-card` | Smart Card | `com.apple.ctk-tokens` | CryptoTokenKit | |
+
+**Use cases:** Background downloads, location services, smart home, virtual meetings, printing, cryptographic tokens
+
+```bash
+npx create-target matter
+npx create-target location-push
+npx create-target bg-download
+```
+
+## Extension properties explained
+
+### Extension Point Identifier
+
+The Apple `NSExtensionPointIdentifier` that defines the extension type. This is set automatically based on the target type.
+
+### Product Type
+
+The Xcode product type that determines build settings. Most extensions use `com.apple.product-type.app-extension`, but some have special types:
+
+- **clip**: `com.apple.product-type.application.on-demand-install-capable`
+- **watch**: `com.apple.product-type.application`
+- **app-intent**: `com.apple.product-type.extensionkit-extension`
+
+### Frameworks
+
+System frameworks automatically linked to the target. You can add additional frameworks in your `expo-target.config.js`:
+
+```javascript
+module.exports = {
+  type: "widget",
+  frameworks: ["CoreLocation", "MapKit"],
+};
+```
+
+### App Groups (by default)
+
+Extensions marked with ✓ automatically sync the `com.apple.security.application-groups` entitlement from your main app. This enables data sharing via `NSUserDefaults`.
+
+### Embedded Swift
+
+Extensions marked with ✓ have `ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES` set to `YES`, which is required for certain extension types.
+
+## Not yet supported
+
+The following extension types exist in Xcode but aren't supported yet:
+
+| Extension Point Identifier | Template Name | Platform |
+| --- | --- | --- |
+| `com.apple.tv-top-shelf` | TV Top Shelf Extension | tvOS |
+| `com.apple.FinderSync` | Finder Sync Extension | macOS |
+| `com.apple.email.extension` | Mail Extension | macOS |
+
+<Info>
+  Run `bun scripts/scan-xcode-targets.ts --diff` in the source repo to regenerate this list from your local Xcode installation.
+</Info>
+
+## Learn more
+
+<CardGroup cols={2}>
+  <Card title="Create a target" icon="plus" href="/cli/create-target">
+    Use the CLI to create any target type
+  </Card>
+  <Card title="Target configuration" icon="gear" href="/concepts/target-config">
+    Configure target settings
+  </Card>
+  <Card title="Entitlements" icon="key" href="/concepts/entitlements">
+    Understand extension entitlements
+  </Card>
+  <Card title="Target guides" icon="book" href="/targets/overview">
+    Category-specific guides
+  </Card>
+</CardGroup>

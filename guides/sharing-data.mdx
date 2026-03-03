@@ -1,0 +1,364 @@
+---
+title: Sharing Data Between Targets
+description: Use App Groups and the ExtensionStorage API to share data between your app and extensions
+---
+
+Targets like widgets, share extensions, and App Clips run in separate processes and can't directly access your app's data. App Groups provide a shared container for storing data accessible to all your targets.
+
+## How It Works
+
+App Groups create a shared storage area identified by a group ID (e.g., `group.com.yourapp.data`). All targets with the same App Group entitlement can read and write to this storage using `NSUserDefaults`.
+
+## Setup
+
+<Steps>
+  <Step title="Define App Group in main app">
+    Add the App Group entitlement to `app.json`:
+
+    ```json app.json
+    {
+      "expo": {
+        "ios": {
+          "bundleIdentifier": "com.yourapp",
+          "entitlements": {
+            "com.apple.security.application-groups": [
+              "group.com.yourapp.data"
+            ]
+          }
+        },
+        "plugins": ["@bacons/apple-targets"]
+      }
+    }
+    ```
+
+    <Note>
+    A good default is `group.<bundle-identifier>`. Use a more generic name if you plan to share across multiple apps.
+    </Note>
+  </Step>
+
+  <Step title="Add App Group to your target">
+    Configure your target to use the same App Group:
+
+    ```js targets/widget/expo-target.config.js
+    /** @type {import('@bacons/apple-targets/app.plugin').ConfigFunction} */
+    module.exports = (config) => ({
+      type: "widget",
+      entitlements: {
+        // Sync App Groups from main app
+        "com.apple.security.application-groups":
+          config.ios.entitlements["com.apple.security.application-groups"],
+      },
+    });
+    ```
+
+    Or hardcode the group:
+
+    ```js
+    module.exports = {
+      type: "widget",
+      entitlements: {
+        "com.apple.security.application-groups": ["group.com.yourapp.data"],
+      },
+    };
+    ```
+  </Step>
+
+  <Step title="Run prebuild">
+    ```bash
+    npx expo prebuild -p ios --clean
+    ```
+
+    <Warning>
+    You may need to create an EAS Build or open Xcode to sync the entitlements with Apple's servers.
+    </Warning>
+  </Step>
+</Steps>
+
+## ExtensionStorage API
+
+The `@bacons/apple-targets` package provides a native module for easy interaction with shared storage:
+
+### Writing Data from React Native
+
+```tsx
+import { ExtensionStorage } from "@bacons/apple-targets";
+
+// Create storage instance with your App Group ID
+const storage = new ExtensionStorage("group.com.yourapp.data");
+
+// Store a string
+storage.set("userName", "Evan");
+
+// Store a number
+storage.set("score", 42);
+
+// Store an object
+storage.set("user", {
+  name: "Evan",
+  score: 42,
+});
+
+// Store an array of objects
+storage.set("leaderboard", [
+  { name: "Alice", score: 100 },
+  { name: "Bob", score: 90 },
+]);
+
+// Remove a key
+storage.set("oldKey", undefined);
+// or
+storage.remove("oldKey");
+```
+
+### Reading Data from React Native
+
+```tsx
+import { ExtensionStorage } from "@bacons/apple-targets";
+
+const storage = new ExtensionStorage("group.com.yourapp.data");
+
+// Get a value (returns string | null)
+const userName = storage.get("userName");
+
+// Parse JSON for objects
+const userJson = storage.get("user");
+if (userJson) {
+  const user = JSON.parse(userJson);
+  console.log(user.name, user.score);
+}
+```
+
+### Reading Data from Swift
+
+Access the same data in your widget or extension:
+
+```swift
+let defaults = UserDefaults(suiteName: "group.com.yourapp.data")
+
+// Read a string
+let userName = defaults?.string(forKey: "userName")
+
+// Read a number
+let score = defaults?.integer(forKey: "score")
+
+// Read an object (stored as JSON)
+if let userData = defaults?.data(forKey: "user"),
+   let user = try? JSONDecoder().decode(User.self, from: userData) {
+    print("Name: \(user.name), Score: \(user.score)")
+}
+```
+
+### Writing Data from Swift
+
+```swift
+let defaults = UserDefaults(suiteName: "group.com.yourapp.data")
+
+// Write a string
+defaults?.set("New Value", forKey: "userName")
+
+// Write a number
+defaults?.set(100, forKey: "score")
+
+// Write an object as JSON
+let encoder = JSONEncoder()
+if let userData = try? encoder.encode(user) {
+    defaults?.set(userData, forKey: "user")
+}
+
+// Sync immediately
+defaults?.synchronize()
+```
+
+## Reloading Widgets
+
+After updating shared data, reload your widgets to reflect the changes:
+
+```tsx
+import { ExtensionStorage } from "@bacons/apple-targets";
+
+const storage = new ExtensionStorage("group.com.yourapp.data");
+
+// Update data
+storage.set("score", 100);
+
+// Reload all widgets
+ExtensionStorage.reloadWidget();
+
+// Or reload a specific widget by kind
+ExtensionStorage.reloadWidget("widget");
+```
+
+For Control Widgets:
+
+```tsx
+ExtensionStorage.reloadControls();
+
+// Or reload a specific control
+ExtensionStorage.reloadControls("com.yourapp.control");
+```
+
+## Complete API Reference
+
+### `ExtensionStorage` Instance Methods
+
+```typescript
+class ExtensionStorage {
+  constructor(suiteName: string);
+
+  // Store a value (undefined removes the key)
+  set(
+    key: string,
+    value:
+      | string
+      | number
+      | Record<string, string | number>
+      | Array<Record<string, string | number>>
+      | undefined
+  ): void;
+
+  // Get a value (returns null if not found)
+  get(key: string): string | null;
+
+  // Remove a key
+  remove(key: string): void;
+}
+```
+
+### `ExtensionStorage` Static Methods
+
+```typescript
+class ExtensionStorage {
+  // Reload all widgets or a specific widget by kind
+  static reloadWidget(name?: string): void;
+
+  // Reload all controls or a specific control by kind
+  static reloadControls(name?: string): void;
+}
+```
+
+## Example: Widget with Live Data
+
+Here's a complete example of a widget that displays data from your app:
+
+<CodeGroup>
+```tsx app/index.tsx
+import { useState } from 'react';
+import { Button, Text, View } from 'react-native';
+import { ExtensionStorage } from '@bacons/apple-targets';
+
+const storage = new ExtensionStorage('group.com.yourapp.data');
+
+export default function App() {
+  const [count, setCount] = useState(0);
+
+  const handlePress = () => {
+    const newCount = count + 1;
+    setCount(newCount);
+    
+    // Save to shared storage
+    storage.set('count', newCount);
+    
+    // Reload the widget
+    ExtensionStorage.reloadWidget();
+  };
+
+  return (
+    <View>
+      <Text>Count: {count}</Text>
+      <Button title="Increment" onPress={handlePress} />
+    </View>
+  );
+}
+```
+
+```swift targets/widget/widgets.swift
+import WidgetKit
+import SwiftUI
+
+struct Provider: TimelineProvider {
+    func placeholder(in context: Context) -> SimpleEntry {
+        SimpleEntry(date: Date(), count: 0)
+    }
+
+    func getSnapshot(in context: Context, completion: @escaping (SimpleEntry) -> ()) {
+        let count = getCount()
+        let entry = SimpleEntry(date: Date(), count: count)
+        completion(entry)
+    }
+
+    func getTimeline(in context: Context, completion: @escaping (Timeline<Entry>) -> ()) {
+        let count = getCount()
+        let entry = SimpleEntry(date: Date(), count: count)
+        let timeline = Timeline(entries: [entry], policy: .never)
+        completion(timeline)
+    }
+    
+    func getCount() -> Int {
+        let defaults = UserDefaults(suiteName: "group.com.yourapp.data")
+        return defaults?.integer(forKey: "count") ?? 0
+    }
+}
+
+struct SimpleEntry: TimelineEntry {
+    let date: Date
+    let count: Int
+}
+
+struct WidgetEntryView: View {
+    var entry: Provider.Entry
+
+    var body: some View {
+        VStack {
+            Text("Count")
+                .font(.caption)
+            Text("\(entry.count)")
+                .font(.largeTitle)
+                .bold()
+        }
+    }
+}
+```
+</CodeGroup>
+
+## Background Updates
+
+For more advanced use cases like updating widgets when your app is in the background, see:
+
+- [Keeping A Widget Up-to-Date](https://developer.apple.com/documentation/widgetkit/keeping-a-widget-up-to-date) (Apple Documentation)
+- [Background execution with `expo-task-manager`](https://docs.expo.dev/versions/latest/sdk/task-manager/)
+
+## Automatic App Group Sync
+
+Some target types automatically sync App Groups from your main app:
+
+- Widgets (`widget`)
+- Share Extensions (`share`)
+- App Clips (`clip`)
+- Watch Apps (`watch`)
+
+For these targets, you can omit the entitlements and they'll inherit from your `app.json`.
+
+<Note>
+You can override this behavior by explicitly setting entitlements in `expo-target.config.js`.
+</Note>
+
+## Troubleshooting
+
+<Warning>
+**Entitlements not syncing:** Run an EAS Build or open Xcode and navigate to Signing & Capabilities to force sync with Apple's servers.
+</Warning>
+
+<Tip>
+**Data not appearing:** Call `synchronize()` in Swift after writing data, and check that both targets have the exact same App Group ID.
+</Tip>
+
+<Tip>
+**Widget not updating:** Make sure you're calling `ExtensionStorage.reloadWidget()` after setting data.
+</Tip>
+
+## Next Steps
+
+- Build a [widget with live data](/guides/widgets)
+- Create a [control widget](/guides/control-widgets)
+- Learn about [share extensions](/guides/share-extensions)
+- Read Apple's [App Groups documentation](https://developer.apple.com/documentation/bundleresources/entitlements/com_apple_security_application-groups)

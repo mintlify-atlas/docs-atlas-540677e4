@@ -1,0 +1,312 @@
+---
+title: 'Config Schema'
+description: 'Complete reference for expo-target.config.js configuration options'
+---
+
+The `expo-target.config.js` (or `.json`, `.ts`) file in each target directory defines how the Apple target is generated and configured. This page documents all available configuration properties.
+
+## Config Type
+
+```typescript
+export type Config = {
+  type: ExtensionType;
+  name?: string;
+  displayName?: string;
+  bundleIdentifier?: string;
+  icon?: string;
+  frameworks?: string[];
+  deploymentTarget?: string;
+  appleTeamId?: string;
+  entitlements?: Entitlements;
+  colors?: Record<string, string | DynamicColor>;
+  images?: Record<string, string | { "1x"?: string; "2x"?: string; "3x"?: string }>;
+  exportJs?: boolean;
+};
+
+export type DynamicColor = {
+  light: string;
+  dark?: string;
+};
+
+export type ConfigFunction = (
+  config: import("expo/config").ExpoConfig
+) => Config;
+```
+
+## Properties
+
+<ParamField path="type" type="ExtensionType" required>
+  The type of extension to generate.
+
+  **Example:**
+  ```js
+  type: "widget"
+  ```
+
+  Supported types include: `widget`, `clip`, `share`, `watch`, `intent`, `action`, `notification-content`, `notification-service`, `safari`, and many more.
+</ParamField>
+
+<ParamField path="name" type="string">
+  Name of the target. Will default to a sanitized version of the directory name.
+
+  **Example:**
+  ```js
+  name: "MyWidget"
+  ```
+
+  This name is used for the Xcode target name and other internal identifiers.
+</ParamField>
+
+<ParamField path="displayName" type="string">
+  Optional custom name for `CFBundleDisplayName`. This is the user-facing name that appears on the device.
+
+  **Example:**
+  ```js
+  displayName: "My Awesome Widget"
+  ```
+
+  If not provided, the `name` property will be used.
+</ParamField>
+
+<ParamField path="bundleIdentifier" type="string">
+  Bundle identifier for the target. Will default to a sanitized version of the root project + name.
+
+  **Example:**
+  ```js
+  bundleIdentifier: "com.company.app.widget"
+  ```
+
+  **Tip:** If the specified bundle identifier is prefixed with a dot (`.`), it will be appended to the main app's bundle identifier:
+  ```js
+  bundleIdentifier: ".widget"  // becomes com.company.app.widget
+  ```
+</ParamField>
+
+<ParamField path="icon" type="string">
+  A local file path or URL to an image asset.
+
+  **Example:**
+  ```js
+  icon: "./assets/widget-icon.png"
+  // or
+  icon: "https://example.com/icon.png"
+  ```
+
+  The icon will be automatically resized for all required sizes and added to the target's Assets.xcassets.
+</ParamField>
+
+<ParamField path="frameworks" type="string[]">
+  A list of additional frameworks to add to the target.
+
+  **Example:**
+  ```js
+  frameworks: ["UserNotifications", "Intents"]
+  ```
+
+  Common frameworks are automatically added based on the target type. Use this to add additional frameworks your target needs.
+</ParamField>
+
+<ParamField path="deploymentTarget" type="string">
+  Deployment iOS version for the target.
+
+  **Default:** `"18.0"`
+
+  **Example:**
+  ```js
+  deploymentTarget: "17.0"
+  ```
+</ParamField>
+
+<ParamField path="appleTeamId" type="string">
+  Apple team ID to use for signing the target.
+
+  **Example:**
+  ```js
+  appleTeamId: "ABC123DEF4"
+  ```
+
+  Defaults to whatever is used in the main App target.
+</ParamField>
+
+<ParamField path="entitlements" type="Entitlements">
+  Optional entitlements to add to the target.
+
+  **Example:**
+  ```js
+  entitlements: {
+    "com.apple.security.application-groups": ["group.com.company.app"],
+    "com.apple.developer.healthkit": true,
+    "com.apple.developer.healthkit.access": ["health-records"]
+  }
+  ```
+
+  See the [Entitlements](/api/config-schema#entitlements-type) section for all available options.
+</ParamField>
+
+<ParamField path="colors" type="Record<string, string | DynamicColor>">
+  Additional colors to generate in the `Assets.xcassets`. These will be available as `UIColor`s in the native source.
+
+  **Example:**
+  ```js
+  colors: {
+    gradient1: "#FF0000",
+    gradient2: { light: "#FF0000", dark: "#0000FF" },
+    $accent: "steelblue",
+    $widgetBackground: "dodgerblue"
+  }
+  ```
+
+  **Usage in Swift:**
+  ```swift
+  Color("gradient1")  // #FF0000 in light mode
+  Color("gradient2")  // #FF0000 in light mode, #0000FF in dark mode
+  ```
+
+  See the [Colors API](/api/colors) for special color names like `$accent` and `$widgetBackground`.
+</ParamField>
+
+<ParamField path="images" type="Record<string, string | { '1x'?: string; '2x'?: string; '3x'?: string }>">
+  Additional images to generate in the `Assets.xcassets`. These will be available as `UIImage`s in the native source. The sources can be URLs or local file paths.
+
+  **Example:**
+  ```js
+  images: {
+    evan: "https://github.com/evanbacon.png",
+    logo: {
+      "1x": "./assets/logo.png",
+      "2x": "./assets/logo@2x.png",
+      "3x": "./assets/logo@3x.png"
+    }
+  }
+  ```
+
+  **Usage in Swift:**
+  ```swift
+  Image("evan")  // displays the image
+  Image("logo")  // uses appropriate scale for device
+  ```
+
+  See the [Images API](/api/images) for more details.
+</ParamField>
+
+<ParamField path="exportJs" type="boolean">
+  Should the release build export the JS bundle and embed it.
+
+  **Default:** `false`
+
+  **Example:**
+  ```js
+  exportJs: true
+  ```
+
+  Intended for App Clips and Share Extensions where you may want to use React Native.
+</ParamField>
+
+## Entitlements Type
+
+The `Entitlements` type supports all standard Apple entitlements. Here are some commonly used ones:
+
+<ParamField path="com.apple.security.application-groups" type="string[]">
+  App groups for shared data between targets. Values should be prefixed with `group.`
+
+  **Example:**
+  ```js
+  entitlements: {
+    "com.apple.security.application-groups": ["group.com.company.app"]
+  }
+  ```
+</ParamField>
+
+<ParamField path="com.apple.developer.healthkit" type="boolean">
+  Enable HealthKit capabilities.
+
+  **Example:**
+  ```js
+  entitlements: {
+    "com.apple.developer.healthkit": true
+  }
+  ```
+</ParamField>
+
+<ParamField path="com.apple.developer.homekit" type="boolean">
+  Enable HomeKit capabilities.
+</ParamField>
+
+<ParamField path="com.apple.developer.siri" type="boolean">
+  Enable Siri integration.
+</ParamField>
+
+<ParamField path="com.apple.developer.associated-domains" type="string[]">
+  Associated domains for universal links and app clips.
+
+  **Example:**
+  ```js
+  entitlements: {
+    "com.apple.developer.associated-domains": [
+      "appclips:example.com",
+      "webcredentials:example.com"
+    ]
+  }
+  ```
+</ParamField>
+
+<ParamField path="com.apple.developer.icloud-container-identifiers" type="string[]">
+  iCloud container identifiers. Values should be prefixed with `iCloud.`
+
+  **Example:**
+  ```js
+  entitlements: {
+    "com.apple.developer.icloud-container-identifiers": [
+      "iCloud.com.company.app"
+    ]
+  }
+  ```
+</ParamField>
+
+## Dynamic Configuration
+
+You can export a function instead of an object to dynamically generate configuration based on the Expo config:
+
+```js
+// expo-target.config.js
+module.exports = (config) => {
+  return {
+    type: "widget",
+    name: "MyWidget",
+    bundleIdentifier: `.${config.slug}-widget`,
+    colors: {
+      $accent: config.primaryColor || "blue"
+    }
+  };
+};
+```
+
+The function receives the Expo config as an argument and must return a `Config` object.
+
+## Complete Example
+
+```js
+// expo-target.config.js
+module.exports = {
+  type: "widget",
+  name: "MyWidget",
+  displayName: "My Awesome Widget",
+  bundleIdentifier: ".widget",
+  icon: "./assets/widget-icon.png",
+  deploymentTarget: "17.0",
+  frameworks: ["UserNotifications"],
+  entitlements: {
+    "com.apple.security.application-groups": ["group.com.company.app"]
+  },
+  colors: {
+    $accent: "steelblue",
+    $widgetBackground: "dodgerblue",
+    gradient1: { light: "#FF0000", dark: "#0000FF" }
+  },
+  images: {
+    logo: "./assets/logo.png",
+    background: "https://example.com/bg.png"
+  },
+  exportJs: false
+};
+```

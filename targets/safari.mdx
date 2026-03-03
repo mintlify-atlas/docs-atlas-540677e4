@@ -1,0 +1,333 @@
+---
+title: Safari extensions
+description: Web extensions and content blockers for Safari
+---
+
+Safari extensions enable you to extend Safari functionality with web extensions and content blockers.
+
+## Extension types
+
+<CardGroup cols={2}>
+  <Card title="Safari Extension" icon="compass">
+    Full web extensions with content scripts and background pages
+  </Card>
+  <Card title="Content Blocker" icon="shield">
+    Declarative content blocking rules
+  </Card>
+</CardGroup>
+
+## Safari Extension
+
+Modern Safari extensions use the WebExtensions API compatible with Chrome and Firefox extensions.
+
+### Extension point
+
+| Property | Value |
+| --- | --- |
+| **Type** | `safari` |
+| **Extension Point** | `com.apple.Safari.web-extension` |
+| **Frameworks** | None |
+
+### Creating a Safari extension
+
+```bash
+npx create-target safari
+```
+
+This generates:
+- `manifest.json` - Extension manifest
+- `background.js` - Background script
+- `content.js` - Content script
+- `assets/` - Extension resources
+
+### manifest.json
+
+```json
+{
+  "manifest_version": 3,
+  "name": "My Safari Extension",
+  "version": "1.0",
+  "description": "Extension description",
+  "icons": {
+    "48": "images/icon-48.png",
+    "96": "images/icon-96.png",
+    "128": "images/icon-128.png"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["*://*/*"],
+      "js": ["content.js"]
+    }
+  ],
+  "permissions": [
+    "activeTab",
+    "storage"
+  ]
+}
+```
+
+### Background script
+
+```javascript
+// targets/safari/assets/background.js
+console.log("Background script loaded");
+
+browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.action === "getData") {
+    // Handle message from content script
+    sendResponse({ data: "response" });
+  }
+});
+
+browser.action.onClicked.addListener((tab) => {
+  // Handle toolbar icon click
+  browser.tabs.sendMessage(tab.id, { action: "iconClicked" });
+});
+```
+
+### Content script
+
+```javascript
+// targets/safari/assets/content.js
+console.log("Content script loaded on", window.location.href);
+
+// Modify page content
+document.body.style.backgroundColor = "#f0f0f0";
+
+// Listen for messages from background
+browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.action === "iconClicked") {
+    alert("Extension clicked!");
+  }
+});
+
+// Send message to background
+browser.runtime.sendMessage({ action: "getData" }, (response) => {
+  console.log("Response:", response);
+});
+```
+
+### Native messaging
+
+Communicate between the web extension and native iOS app:
+
+```javascript
+// In content script or background script
+browser.runtime.sendNativeMessage("application.id", { command: "getData" }, (response) => {
+  console.log("Native response:", response);
+});
+```
+
+Handle in your iOS app (requires native module implementation).
+
+### File structure
+
+The `assets/` directory is automatically linked as resources:
+
+```
+targets/safari/
+├── expo-target.config.js
+├── Info.plist
+└── assets/
+    ├── manifest.json
+    ├── background.js
+    ├── content.js
+    └── images/
+        ├── icon-48.png
+        ├── icon-96.png
+        └── icon-128.png
+```
+
+<Note>
+  Files in the top-level `assets/` directory are linked as resources. This is specific to Safari extensions.
+</Note>
+
+## Content Blocker
+
+Declarative content blocking without JavaScript execution.
+
+### Extension point
+
+| Property | Value |
+| --- | --- |
+| **Type** | `content-blocker` |
+| **Extension Point** | `com.apple.Safari.content-blocker` |
+| **Frameworks** | None |
+
+### Creating a content blocker
+
+```bash
+npx create-target content-blocker
+```
+
+### Blocking rules
+
+Define blocking rules in `blockerList.json`:
+
+```json
+[
+  {
+    "action": {
+      "type": "block"
+    },
+    "trigger": {
+      "url-filter": ".*",
+      "resource-type": ["image"],
+      "if-domain": ["example.com"]
+    }
+  },
+  {
+    "action": {
+      "type": "block-cookies"
+    },
+    "trigger": {
+      "url-filter": ".*",
+      "load-type": ["third-party"]
+    }
+  },
+  {
+    "action": {
+      "type": "css-display-none",
+      "selector": ".ad-banner, #popup"
+    },
+    "trigger": {
+      "url-filter": ".*"
+    }
+  }
+]
+```
+
+### Action types
+
+| Action | Description |
+| --- | --- |
+| `block` | Block the request |
+| `block-cookies` | Block cookies |
+| `css-display-none` | Hide elements with CSS |
+| `ignore-previous-rules` | Override previous rules |
+| `make-https` | Upgrade to HTTPS |
+
+### Trigger options
+
+| Property | Description |
+| --- | --- |
+| `url-filter` | Regular expression for URLs |
+| `url-filter-is-case-sensitive` | Case sensitivity |
+| `resource-type` | Types: `document`, `image`, `script`, `stylesheet`, etc. |
+| `if-domain` | Apply only on these domains |
+| `unless-domain` | Apply except on these domains |
+| `load-type` | `first-party` or `third-party` |
+
+### Loading rules
+
+Content blocker rules are loaded automatically from the extension bundle. Ensure `blockerList.json` is included in the target.
+
+### Rule limits
+
+Safari supports up to **50,000 content blocking rules** per extension. Rules are compiled for performance.
+
+## Permissions
+
+Common Safari extension permissions:
+
+```json
+{
+  "permissions": [
+    "activeTab",        // Access current tab
+    "storage",          // Use browser.storage API
+    "tabs",             // Access tab information
+    "webNavigation",    // Monitor navigation events
+    "webRequest",       // Observe web requests
+    "declarativeNetRequest" // Modify network requests
+  ]
+}
+```
+
+## Testing Safari extensions
+
+<Steps>
+  <Step title="Build the extension">
+    Build your Safari extension target in Xcode.
+  </Step>
+
+  <Step title="Enable Safari Developer settings">
+    In Safari, go to **Safari > Settings > Advanced** and enable "Show Develop menu in menu bar".
+  </Step>
+
+  <Step title="Allow unsigned extensions">
+    In **Develop > Allow Unsigned Extensions**, enable unsigned extensions.
+  </Step>
+
+  <Step title="Enable your extension">
+    In **Safari > Settings > Extensions**, enable your extension.
+  </Step>
+
+  <Step title="Test functionality">
+    Navigate to websites and verify your extension works.
+  </Step>
+</Steps>
+
+## Best practices
+
+<Accordion title="Minimize permissions">
+  - Only request permissions you actually need
+  - Use `activeTab` instead of `<all_urls>` when possible
+  - Explain permission usage to users
+</Accordion>
+
+<Accordion title="Optimize performance">
+  - Keep content scripts lightweight
+  - Use event pages instead of persistent background pages
+  - Lazy load resources when needed
+  - Minimize DOM manipulations
+</Accordion>
+
+<Accordion title="Handle errors gracefully">
+  - Validate all external data
+  - Provide fallbacks for failed operations
+  - Log errors for debugging
+  - Test on multiple websites
+</Accordion>
+
+## Troubleshooting
+
+<Accordion title="Extension not appearing in Safari">
+  - Verify the extension is built and installed
+  - Enable "Allow Unsigned Extensions" in Safari Developer menu
+  - Check Safari Settings > Extensions
+  - Rebuild the extension target
+</Accordion>
+
+<Accordion title="Content script not running">
+  - Check `matches` pattern in manifest.json
+  - Verify website matches the pattern
+  - Look for JavaScript errors in Safari Web Inspector
+  - Ensure manifest_version is correct
+</Accordion>
+
+<Accordion title="Resources not loading">
+  - Verify files are in the `assets/` directory
+  - Check file paths in manifest.json
+  - Rebuild after adding new files
+  - Check Xcode build phase includes resources
+</Accordion>
+
+## Learn more
+
+<CardGroup cols={2}>
+  <Card title="Safari extensions guide" icon="book" href="/guides/safari-extensions">
+    Detailed Safari extension guide
+  </Card>
+  <Card title="Target config" icon="gear" href="/concepts/target-config">
+    Configure Safari extensions
+  </Card>
+  <Card title="Complete target list" icon="list" href="/targets/complete-list">
+    All extension types
+  </Card>
+  <Card title="Apple documentation" icon="apple" href="https://developer.apple.com/documentation/safariservices/safari_web_extensions">
+    Official Safari Web Extensions documentation
+  </Card>
+</CardGroup>

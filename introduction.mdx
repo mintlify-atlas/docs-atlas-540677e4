@@ -1,0 +1,79 @@
+---
+title: Expo Apple Targets
+description: Build native Apple extensions like Widgets, App Clips, and Share Extensions for your Expo app using Continuous Native Generation
+---
+
+## Build native Apple targets without leaving Expo
+
+Expo Apple Targets is a Config Plugin that generates native Apple targets like Widgets, App Clips, Safari Extensions, and more—all while keeping your source files outside the `/ios` directory. Develop in Xcode, and your changes persist through prebuild.
+
+<img src="https://github.com/user-attachments/assets/aedaafa0-1ef0-403c-a797-9f4c82cdb9f1" alt="Xcode showing expo:targets folder" />
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Get a working widget up and running in minutes
+  </Card>
+  <Card title="Installation" icon="download" href="/installation">
+    Prerequisites and setup for your Expo project
+  </Card>
+  <Card title="Target config" icon="gear" href="/concepts/target-config">
+    Configure icons, colors, entitlements, and more
+  </Card>
+  <Card title="GitHub repository" icon="github" href="https://github.com/EvanBacon/expo-apple-targets">
+    View the source code and contribute
+  </Card>
+</CardGroup>
+
+## What you can build
+
+Expo Apple Targets supports 30+ native Apple extension types:
+
+- **Widgets & Live Activities** - Home screen widgets with real-time updates
+- **App Clips** - Lightweight app experiences that launch instantly
+- **Share Extensions** - Add your app to the iOS share sheet
+- **Safari Extensions** - Content blockers and web extensions
+- **Notification Extensions** - Rich notifications with custom UI
+- **Watch Apps** - Companion apps for Apple Watch
+- **Control Widgets** - Quick actions in Control Center
+- **Siri Intents** - Voice shortcuts and app intents
+- And 20+ more extension types
+
+<Note>
+This plugin requires **CocoaPods 1.16.2+**, **Xcode 16+** (macOS Sequoia), and **Expo SDK 53+**.
+</Note>
+
+## How it works
+
+Unlike traditional iOS development, Expo Apple Targets uses [Continuous Native Generation](https://docs.expo.dev/workflow/continuous-native-generation/) to keep your native code outside the generated `ios/` directory:
+
+1. **Create a target** - Run `npx create-target widget` to scaffold a new target in `/targets`
+2. **Develop in Xcode** - Open your project and edit files in the `expo:targets/` virtual folder
+3. **Changes persist** - Your edits are saved outside `/ios`, surviving `prebuild --clean`
+4. **Build and ship** - Build in Xcode or use EAS Build for automated CI/CD
+
+The magic happens in the `/targets` directory. Each subfolder contains an `expo-target.config.js` file that defines target settings, and all files in that folder become part of the target.
+
+## Why use this plugin?
+
+Building native Apple extensions traditionally requires:
+- Manual Xcode project configuration
+- Complex entitlements and provisioning setup  
+- Files lost every time you regenerate your iOS project
+- Separate build processes for each target
+
+With Expo Apple Targets, you get:
+- ✅ Automated Xcode project setup via Config Plugin
+- ✅ Source files preserved outside generated `/ios` directory
+- ✅ Automatic entitlements and App Group configuration
+- ✅ Integrated EAS Build support for CI/CD
+- ✅ Full TypeScript types for target configuration
+
+## Real-world examples
+
+This plugin powers production apps like [Pillar Valley](https://evanbacon.dev/blog/apple-home-screen-widgets) with home screen widgets and App Clips. Check out the blog post to see how widgets were built using this plugin.
+
+<CardGroup cols={1}>
+  <Card title="Read the full guide" icon="book" href="/quickstart">
+    Follow the quickstart to build your first widget
+  </Card>
+</CardGroup>

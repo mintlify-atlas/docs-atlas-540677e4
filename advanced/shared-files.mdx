@@ -1,0 +1,270 @@
+---
+title: 'Shared Files'
+description: 'Link files between your main app and targets using the _shared directory'
+---
+
+## Overview
+
+The `_shared` directory pattern allows you to link files to multiple targets simultaneously. This is essential when files need to be compiled into both your main app and one or more extensions.
+
+## Why Shared Files?
+
+Some scenarios require the same source file to be included in multiple targets:
+
+- **Control Widgets** with `openAppWhenRun = true` need intent files in both the widget and main app
+- **App Groups** data models shared between the app and extensions
+- **Utility functions** used across multiple targets
+- **SwiftUI components** reused in widgets and the main app
+
+<Warning>
+Xcode requires separate compilation units per target. Simply importing code from another target won't work—the files must be physically linked to each target that uses them.
+</Warning>
+
+## Directory Structure
+
+There are two types of `_shared` directories:
+
+### Target-Specific Shared Files
+
+Place a `_shared` directory inside any target to share files between that target and the main app:
+
+```
+targets/
+├── widget/
+│   ├── _shared/           # Linked to widget + main app
+│   │   ├── intents.swift
+│   │   └── DataModels.swift
+│   ├── Widget.swift
+│   └── expo-target.config.js
+```
+
+### Global Shared Files
+
+Place a `_shared` directory at the root of `/targets` to share files across ALL targets:
+
+```
+targets/
+├── _shared/              # Linked to ALL targets + main app
+│   ├── CommonModels.swift
+│   └── Utilities.swift
+├── widget/
+│   └── Widget.swift
+├── clip/
+│   └── ClipView.swift
+```
+
+## Example: Control Widgets
+
+Control widgets with `openAppWhenRun = true` require their intent definitions in both targets. Here's the complete pattern:
+
+<Accordion title="Directory Structure">
+```
+targets/
+├── widget/
+│   ├── _shared/
+│   │   └── intents.swift    # Must be in both targets!
+│   ├── WidgetBundle.swift
+│   └── expo-target.config.js
+```
+</Accordion>
+
+<Accordion title="Intent File (intents.swift)">
+```swift
+import AppIntents
+import SwiftUI
+import WidgetKit
+
+@available(iOS 18.0, *)
+struct widgetControl0: ControlWidget {
+    static let kind: String = "com.yourapp.control.0"
+    
+    var body: some ControlWidgetConfiguration {
+        StaticControlConfiguration(kind: Self.kind) {
+            ControlWidgetButton(action: OpenAppIntent0()) {
+                Label("App Settings", systemImage: "star")
+            }
+        }
+        .displayName("Launch Settings")
+        .description("A control that launches the app settings.")
+    }
+}
+
+// This MUST be in both targets when openAppWhenRun = true
+@available(iOS 18.0, *)
+struct OpenAppIntent0: ControlConfigurationIntent {
+    static let title: LocalizedStringResource = "Launch Settings"
+    static let description = IntentDescription(stringLiteral: "A control that launches the app settings.")
+    static let isDiscoverable = true
+    static let openAppWhenRun: Bool = true  // ← Requires file in both targets
+    
+    @MainActor
+    func perform() async throws -> some IntentResult & OpensIntent {
+        return .result(opensIntent: OpenURLIntent(URL(string: "https://yourapp.com/settings")!))
+    }
+}
+```
+</Accordion>
+
+<Accordion title="Widget Bundle File">
+You must manually add the control widgets to your WidgetBundle:
+
+```swift
+import WidgetKit
+import SwiftUI
+
+@main
+struct MyWidgets: WidgetBundle {
+    var body: some Widget {
+        // Your timeline widgets
+        MyTimelineWidget()
+        
+        // Add control widgets defined in _shared
+        if #available(iOS 18.0, *) {
+            widgetControl0()
+        }
+    }
+}
+```
+</Accordion>
+
+<Tip>
+When using `openAppWhenRun = true`, Apple's runtime checks that the intent type exists in the main app. If the file isn't linked to both targets, the control will fail silently.
+</Tip>
+
+## Example: Shared Data Models
+
+Share App Group data structures between your app and widget:
+
+```swift
+// targets/widget/_shared/DataModels.swift
+import Foundation
+
+struct WidgetData: Codable {
+    let title: String
+    let value: Int
+    let updatedAt: Date
+}
+
+class SharedStorage {
+    static let shared = SharedStorage()
+    private let defaults: UserDefaults?
+    
+    init(suiteName: String = "group.com.yourapp.data") {
+        defaults = UserDefaults(suiteName: suiteName)
+    }
+    
+    func saveData(_ data: WidgetData) {
+        if let encoded = try? JSONEncoder().encode(data) {
+            defaults?.set(encoded, forKey: "widgetData")
+        }
+    }
+    
+    func loadData() -> WidgetData? {
+        guard let data = defaults?.data(forKey: "widgetData") else { return nil }
+        return try? JSONDecoder().decode(WidgetData.self, from: data)
+    }
+}
+```
+
+This file is now available in both your React Native app (for saving data) and your widget (for displaying it).
+
+## How Linking Works
+
+<Accordion title="Xcode Project Structure">
+When you run `npx expo prebuild`, the plugin:
+
+1. Scans all `_shared` directories
+2. Creates file references in the Xcode project
+3. Adds those references to multiple target memberships
+4. Maintains the files outside the `/ios` directory
+
+In Xcode, you'll see:
+
+```
+Project Navigator
+├── expo:targets/
+│   ├── _shared/           # Global shared folder
+│   └── widget/
+│       └── _shared/       # Widget-specific shared
+```
+
+Each file shows multiple target checkboxes enabled in the File Inspector.
+</Accordion>
+
+<Accordion title="Build Phase Integration">
+Shared files are automatically added to the "Compile Sources" build phase of each target they're linked to. No manual configuration needed.
+</Accordion>
+
+## When to Prebuild
+
+You must run `npx expo prebuild --clean` after:
+
+<Warning>
+- **Adding** a new file to `_shared`
+- **Renaming** a file in `_shared`
+- **Deleting** a file from `_shared`
+- **Creating** a new `_shared` directory
+</Warning>
+
+Changing the *content* of existing shared files does NOT require prebuild—Xcode tracks the files and picks up changes automatically.
+
+## File Type Support
+
+The `_shared` directory supports any file type Xcode recognizes:
+
+- Swift source files (`.swift`)
+- Objective-C files (`.m`, `.h`)
+- SwiftUI views
+- Data models
+- Metal shaders (`.metal`)
+- Asset catalogs (`.xcassets`) - though these should typically go in target-specific locations
+
+<Tip>
+Assets like images are usually better placed in the target's own directory. Reserve `_shared` for code that needs to be compiled into multiple targets.
+</Tip>
+
+## Limitations
+
+### No Runtime Linking
+
+Shared files create independent copies at build time. Changes in one target's compiled code don't affect the other:
+
+```swift
+// ❌ This won't work as expected
+// Modifying a static variable in the main app won't affect the widget
+static var sharedState: String = "initial"
+```
+
+For runtime data sharing, use:
+- **App Groups** with `UserDefaults` or file containers
+- **CloudKit** for cloud-synced data
+- **Core Data** with shared app group containers
+
+### Namespace Collisions
+
+If multiple `_shared` directories define the same type, you'll get build errors:
+
+```swift
+// ❌ Don't do this
+// targets/_shared/Models.swift
+struct Item { }
+
+// targets/widget/_shared/Models.swift  
+struct Item { }  // Collision!
+```
+
+Use unique type names or Swift modules to avoid conflicts.
+
+## Best Practices
+
+1. **Keep shared code minimal** - Only share what's absolutely necessary
+2. **Use descriptive names** - `WidgetIntents.swift` is clearer than `intents.swift`
+3. **Document dependencies** - Add comments explaining why files are shared
+4. **Prefer target-specific** - Use global `_shared` sparingly
+5. **Watch file count** - Many shared files can slow prebuild
+
+## Next Steps
+
+- Learn about [JavaScript bundling with exportJs](/advanced/export-js)
+- Configure [CocoaPods for React Native targets](/advanced/cocoapods)
+- Set up [App Groups for data sharing](/guides/app-groups)

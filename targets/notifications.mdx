@@ -1,0 +1,307 @@
+---
+title: Notification extensions
+description: Rich notification content and service extensions
+---
+
+Notification extensions enhance push notifications with rich content, media attachments, and custom actions.
+
+## Extension types
+
+Two notification extension types are available:
+
+<CardGroup cols={2}>
+  <Card title="Notification Content" icon="image">
+    Custom UI for displaying rich notification content
+  </Card>
+  <Card title="Notification Service" icon="server">
+    Modify notification payloads before delivery
+  </Card>
+</CardGroup>
+
+## Notification Content Extension
+
+Displays custom UI when the user expands a notification.
+
+### Extension point
+
+| Property | Value |
+| --- | --- |
+| **Type** | `notification-content` |
+| **Extension Point** | `com.apple.usernotifications.content-extension` |
+| **Frameworks** | `UserNotifications`, `UserNotificationsUI` |
+
+### Creating a content extension
+
+```bash
+npx create-target notification-content
+```
+
+### Implementation
+
+```swift
+import UserNotifications
+import UserNotificationsUI
+
+class NotificationViewController: UIViewController, UNNotificationContentExtension {
+    
+    @IBOutlet var label: UILabel?
+    
+    func didReceive(_ notification: UNNotification) {
+        // Extract data from notification
+        let content = notification.request.content
+        label?.text = content.body
+        
+        // Access custom payload
+        if let customData = content.userInfo["customData"] as? String {
+            // Use custom data
+        }
+    }
+    
+    // Handle notification actions
+    func didReceive(_ response: UNNotificationResponse, completionHandler completion: @escaping (UNNotificationContentExtensionResponseOption) -> Void) {
+        if response.actionIdentifier == "LIKE_ACTION" {
+            // Handle like action
+            completion(.dismissAndForwardAction)
+        } else {
+            completion(.dismiss)
+        }
+    }
+}
+```
+
+### Configure notification category
+
+In `Info.plist`, specify which notification categories use this extension:
+
+```xml
+<key>NSExtension</key>
+<dict>
+  <key>NSExtensionAttributes</key>
+  <dict>
+    <key>UNNotificationExtensionCategory</key>
+    <string>myNotificationCategory</string>
+    <key>UNNotificationExtensionInitialContentSizeRatio</key>
+    <real>1.0</real>
+  </dict>
+</dict>
+```
+
+Send a notification with this category:
+
+```json
+{
+  "aps": {
+    "alert": "New message",
+    "category": "myNotificationCategory"
+  },
+  "customData": "value"
+}
+```
+
+## Notification Service Extension
+
+Modifies notification payloads before they're delivered to the user. Common uses:
+
+- Download and attach images/videos
+- Decrypt encrypted messages
+- Update notification content
+- Track delivery
+
+### Extension point
+
+| Property | Value |
+| --- | --- |
+| **Type** | `notification-service` |
+| **Extension Point** | `com.apple.usernotifications.service` |
+| **Frameworks** | `UserNotifications` |
+
+### Creating a service extension
+
+```bash
+npx create-target notification-service
+```
+
+### Implementation
+
+```swift
+import UserNotifications
+
+class NotificationService: UNNotificationServiceExtension {
+    
+    var contentHandler: ((UNNotificationContent) -> Void)?
+    var bestAttemptContent: UNMutableNotificationContent?
+    
+    override func didReceive(_ request: UNNotificationRequest, withContentHandler contentHandler: @escaping (UNNotificationContent) -> Void) {
+        self.contentHandler = contentHandler
+        bestAttemptContent = (request.content.mutableCopy() as? UNMutableNotificationContent)
+        
+        if let bestAttemptContent = bestAttemptContent {
+            // Download and attach an image
+            if let imageURLString = request.content.userInfo["image_url"] as? String,
+               let imageURL = URL(string: imageURLString),
+               let imageData = try? Data(contentsOf: imageURL),
+               let attachment = self.createAttachment(data: imageData, identifier: "image") {
+                bestAttemptContent.attachments = [attachment]
+            }
+            
+            // Decrypt content if needed
+            if let encryptedBody = request.content.userInfo["encrypted_body"] as? String {
+                bestAttemptContent.body = decrypt(encryptedBody)
+            }
+            
+            contentHandler(bestAttemptContent)
+        }
+    }
+    
+    override func serviceExtensionTimeWillExpire() {
+        // Called when extension is about to be terminated
+        // Deliver the best attempt content
+        if let contentHandler = contentHandler, let bestAttemptContent = bestAttemptContent {
+            contentHandler(bestAttemptContent)
+        }
+    }
+    
+    private func createAttachment(data: Data, identifier: String) -> UNNotificationAttachment? {
+        let fileManager = FileManager.default
+        let tmpSubFolderName = ProcessInfo.processInfo.globallyUniqueString
+        let tmpSubFolderURL = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent(tmpSubFolderName, isDirectory: true)
+        
+        do {
+            try fileManager.createDirectory(at: tmpSubFolderURL, withIntermediateDirectories: true, attributes: nil)
+            let fileURL = tmpSubFolderURL.appendingPathComponent(identifier)
+            try data.write(to: fileURL)
+            let attachment = try UNNotificationAttachment(identifier: identifier, url: fileURL, options: nil)
+            return attachment
+        } catch {
+            print("Error creating attachment: \(error)")
+        }
+        
+        return nil
+    }
+    
+    private func decrypt(_ encrypted: String) -> String {
+        // Implement your decryption logic
+        return encrypted
+    }
+}
+```
+
+### Send a notification with media
+
+Push notification payload:
+
+```json
+{
+  "aps": {
+    "alert": "Check out this photo!",
+    "mutable-content": 1
+  },
+  "image_url": "https://example.com/photo.jpg"
+}
+```
+
+<Warning>
+  The `mutable-content: 1` flag is **required** for the service extension to run.
+</Warning>
+
+## Interactive notifications
+
+Define custom notification actions in your main app:
+
+```swift
+import UserNotifications
+
+func registerNotificationActions() {
+    let likeAction = UNNotificationAction(
+        identifier: "LIKE_ACTION",
+        title: "Like",
+        options: [.foreground]
+    )
+    
+    let commentAction = UNNotificationAction(
+        identifier: "COMMENT_ACTION",
+        title: "Comment",
+        options: [.foreground]
+    )
+    
+    let category = UNNotificationCategory(
+        identifier: "myNotificationCategory",
+        actions: [likeAction, commentAction],
+        intentIdentifiers: [],
+        options: [.customDismissAction]
+    )
+    
+    UNUserNotificationCenter.current().setNotificationCategories([category])
+}
+```
+
+## Media attachments
+
+Supported attachment types:
+
+| Type | Extensions |
+| --- | --- |
+| **Images** | .jpg, .jpeg, .png, .gif |
+| **Audio** | .mp3, .wav, .aiff |
+| **Video** | .mp4, .m4v, .mov |
+
+Size limits:
+- Images: 10 MB
+- Audio: 5 MB
+- Video: 50 MB
+
+## Best practices
+
+<Accordion title="Download efficiently">
+  - Use URLSession for downloads (supports background)
+  - Set appropriate timeouts
+  - Handle network failures gracefully
+  - Cache downloaded media when possible
+</Accordion>
+
+<Accordion title="Handle errors">
+  - Always implement `serviceExtensionTimeWillExpire()`
+  - Deliver best-attempt content even on failure
+  - Log errors for debugging
+  - Test with poor network conditions
+</Accordion>
+
+<Accordion title="Secure content">
+  - Validate image URLs
+  - Implement encryption for sensitive data
+  - Don't store sensitive data in notifications
+  - Use App Groups for secure data sharing
+</Accordion>
+
+## Troubleshooting
+
+<Accordion title="Extension not running">
+  - Verify `mutable-content: 1` in notification payload
+  - Check notification category matches Info.plist
+  - Ensure extension is properly code signed
+  - Test on a real device (not simulator for remote notifications)
+</Accordion>
+
+<Accordion title="Images not appearing">
+  - Verify image URL is accessible
+  - Check image file size is under 10 MB
+  - Ensure attachment identifier is unique
+  - Verify file extension is supported
+</Accordion>
+
+## Learn more
+
+<CardGroup cols={2}>
+  <Card title="Notifications guide" icon="book" href="/guides/notifications">
+    Detailed notification guide
+  </Card>
+  <Card title="Target config" icon="gear" href="/concepts/target-config">
+    Configure notification extensions
+  </Card>
+  <Card title="Complete target list" icon="list" href="/targets/complete-list">
+    All extension types
+  </Card>
+  <Card title="Apple documentation" icon="apple" href="https://developer.apple.com/documentation/usernotifications">
+    Official UserNotifications documentation
+  </Card>
+</CardGroup>

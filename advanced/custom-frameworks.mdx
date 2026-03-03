@@ -1,0 +1,373 @@
+---
+title: 'Custom Frameworks'
+description: 'Add system frameworks to your targets for native capabilities'
+---
+
+## Overview
+
+The `frameworks` option in `expo-target.config.js` allows you to link Apple's system frameworks to your target. This gives you access to native iOS capabilities like SwiftUI, WidgetKit, CloudKit, and more.
+
+## Basic Usage
+
+Add frameworks to your target configuration:
+
+```js
+// targets/widget/expo-target.config.js
+/** @type {import('@bacons/apple-targets/app.plugin').Config} */
+module.exports = {
+  type: "widget",
+  frameworks: [
+    "SwiftUI",
+    "WidgetKit",
+  ],
+};
+```
+
+<Tip>
+The `.framework` extension is optional—both `"SwiftUI"` and `"SwiftUI.framework"` work identically.
+</Tip>
+
+## Default Frameworks
+
+Many target types include frameworks automatically based on their functionality:
+
+<Accordion title="Widget Extensions">
+```js
+// These are added automatically for type: "widget"
+frameworks: ["SwiftUI", "WidgetKit"]
+```
+
+No need to specify them unless you want additional frameworks.
+</Accordion>
+
+<Accordion title="Watch Apps">
+```js
+// Automatic for type: "watch"
+frameworks: ["WatchKit"]
+```
+</Accordion>
+
+<Accordion title="Safari Extensions">
+```js
+// Automatic for type: "safari"
+frameworks: ["SafariServices"]
+```
+</Accordion>
+
+<Accordion title="Network Extensions">
+```js
+// Automatic for packet tunnel, app proxy, DNS proxy, filter data
+frameworks: ["NetworkExtension"]
+```
+</Accordion>
+
+See the [target types reference](/reference/target-types) for complete defaults.
+
+## Common Frameworks
+
+Here are frequently used frameworks and their purposes:
+
+### UI Frameworks
+
+```js
+frameworks: [
+  "SwiftUI",        // Modern declarative UI
+  "UIKit",          // Traditional iOS UI
+  "AppKit",         // macOS UI (Catalyst apps)
+  "WatchKit",       // watchOS UI
+]
+```
+
+### Widget & Control Frameworks
+
+```js
+frameworks: [
+  "WidgetKit",      // Home screen widgets & Live Activities
+  "AppIntents",     // Siri shortcuts & controls
+  "Intents",        // Legacy Siri intents
+  "IntentsUI",      // Custom Siri UI
+]
+```
+
+### Data & Storage
+
+```js
+frameworks: [
+  "CoreData",       // Local database
+  "CloudKit",       // iCloud sync
+  "UniformTypeIdentifiers", // File type handling
+]
+```
+
+### Media & Graphics
+
+```js
+frameworks: [
+  "Photos",         // Photo library access
+  "PhotosUI",       // Photo picker UI
+  "AVFoundation",   // Audio/video playback
+  "CoreImage",      // Image processing
+  "CoreGraphics",   // Low-level graphics
+  "Metal",          // GPU programming
+]
+```
+
+### Networking & Services
+
+```js
+frameworks: [
+  "NetworkExtension",  // VPN, content filtering, DNS
+  "Network",           // Modern networking
+  "SafariServices",    // Safari integration
+  "AuthenticationServices", // Sign in with Apple, passwords
+]
+```
+
+### Device Features
+
+```js
+frameworks: [
+  "CoreLocation",   // GPS & location services
+  "CoreMotion",     // Accelerometer, gyroscope
+  "HealthKit",      // Health & fitness data
+  "HomeKit",        // Smart home control
+  "CarPlay",        // CarPlay integration
+]
+```
+
+## Example: Widget with CloudKit
+
+A widget that syncs data via iCloud:
+
+```js
+// targets/widget/expo-target.config.js
+module.exports = {
+  type: "widget",
+  frameworks: [
+    // SwiftUI & WidgetKit are automatic for widgets
+    "CloudKit",       // Add iCloud sync
+  ],
+  entitlements: {
+    "com.apple.developer.icloud-container-identifiers": [
+      "iCloud.com.yourcompany.yourapp"
+    ],
+    "com.apple.developer.icloud-services": ["CloudKit"],
+  },
+};
+```
+
+Then use CloudKit in your widget:
+
+```swift
+import SwiftUI
+import WidgetKit
+import CloudKit
+
+struct Provider: TimelineProvider {
+    func getTimeline(in context: Context, completion: @escaping (Timeline<Entry>) -> ()) {
+        let container = CKContainer.default()
+        let database = container.publicCloudDatabase
+        
+        // Fetch data from CloudKit
+        // ...
+    }
+}
+```
+
+## Example: App Intent Extension
+
+An App Intent for Siri shortcuts:
+
+```js
+// targets/app-intent/expo-target.config.js
+module.exports = {
+  type: "app-intent",
+  frameworks: [
+    "AppIntents",
+    "CoreLocation",  // If your intent needs location
+  ],
+};
+```
+
+## Example: Photo Editing Extension
+
+A photo filter extension:
+
+```js
+// targets/photo-editing/expo-target.config.js
+module.exports = {
+  type: "photo-editing",
+  frameworks: [
+    "Photos",
+    "PhotosUI",
+    "CoreImage",     // For image filters
+    "Metal",         // For GPU-accelerated processing
+  ],
+};
+```
+
+## Framework Requirements
+
+<Warning>
+Some frameworks require specific capabilities or entitlements:
+
+- **CloudKit**: Requires iCloud entitlements
+- **HealthKit**: Requires health capabilities + privacy keys
+- **HomeKit**: Requires HomeKit entitlement
+- **NetworkExtension**: Requires network extension entitlement
+- **AuthenticationServices**: Requires associated domains for Sign in with Apple
+
+Add these in your `entitlements` config and/or Info.plist.
+</Warning>
+
+## Version Compatibility
+
+Frameworks are version-specific. Check availability:
+
+```swift
+if #available(iOS 16.0, *) {
+    // Use iOS 16+ framework features
+} else {
+    // Fallback for older versions
+}
+```
+
+Match your deployment target:
+
+```js
+module.exports = {
+  type: "widget",
+  deploymentTarget: "16.0",  // Minimum iOS version
+  frameworks: ["WidgetKit"],   // Available since iOS 14
+};
+```
+
+## Linking Behavior
+
+<Accordion title="How frameworks are linked">
+When you specify frameworks, the plugin:
+
+1. Adds the framework to the target's "Link Binary with Libraries" build phase
+2. Sets the appropriate framework search paths
+3. Configures the linker flags
+4. Handles both system frameworks and custom frameworks
+
+You don't need to configure Xcode manually.
+</Accordion>
+
+<Accordion title="Required vs Optional linking">
+By default, frameworks are **required**. If a framework isn't available at runtime, the app crashes.
+
+For optional frameworks:
+
+```swift
+import SomeFramework
+
+if #available(iOS 15.0, *) {
+    // Use framework
+} else {
+    // Framework not available
+}
+```
+
+The Swift compiler handles this automatically for system frameworks.
+</Accordion>
+
+## Custom Framework Files
+
+You can also link custom `.framework` bundles:
+
+```js
+frameworks: [
+  "SwiftUI",
+  "../libs/MyCustomFramework.framework",  // Relative path
+]
+```
+
+Place your custom frameworks in a `libs/` directory and reference them by relative path.
+
+<Tip>
+For third-party dependencies, prefer CocoaPods in your `pods.rb` file instead of manually linking frameworks.
+</Tip>
+
+## Dynamic Configuration
+
+Use a function to conditionally add frameworks:
+
+```js
+// targets/widget/expo-target.config.js
+/** @type {import('@bacons/apple-targets/app.plugin').ConfigFunction} */
+module.exports = (config) => {
+  const frameworks = ["SwiftUI", "WidgetKit"];
+  
+  // Add CloudKit if configured
+  if (config.ios.entitlements?.["com.apple.developer.icloud-services"]) {
+    frameworks.push("CloudKit");
+  }
+  
+  return {
+    type: "widget",
+    frameworks,
+  };
+};
+```
+
+## Debugging Framework Issues
+
+<Accordion title="Framework not found at runtime">
+Check:
+
+1. The framework name is spelled correctly
+2. The framework is available on your deployment target version
+3. You've run `npx expo prebuild --clean` after adding it
+4. The framework appears in Xcode under Target > Build Phases > Link Binary with Libraries
+</Accordion>
+
+<Accordion title="Build errors about missing symbols">
+You may need additional frameworks:
+
+```
+Undefined symbols for architecture arm64:
+  "_OBJC_CLASS_$_CKContainer"
+```
+
+This means you're using CloudKit but haven't added the framework:
+
+```js
+frameworks: ["CloudKit"],
+```
+</Accordion>
+
+<Accordion title="Runtime crashes on older iOS versions">
+The framework might not be available on your minimum deployment target:
+
+```js
+// If using iOS 18+ features
+deploymentTarget: "18.0",
+```
+
+Or use availability checks:
+
+```swift
+if #available(iOS 18.0, *) {
+    // Use new framework
+}
+```
+</Accordion>
+
+## Performance Considerations
+
+- **Lazy loading**: Frameworks are loaded on first use (for Swift frameworks)
+- **Binary size**: Each framework adds to your app's download size
+- **Startup time**: Many frameworks can slow app launch
+
+<Tip>
+Only include frameworks you actually use. Remove unused frameworks to keep your extension lean.
+</Tip>
+
+## Next Steps
+
+- Learn about [CocoaPods integration](/advanced/cocoapods) for third-party dependencies
+- Explore [target types and their default frameworks](/reference/target-types)
+- Set up [shared files between targets](/advanced/shared-files)
+- Check [troubleshooting](/advanced/troubleshooting) for common framework issues

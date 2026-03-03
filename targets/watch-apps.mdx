@@ -1,0 +1,286 @@
+---
+title: Apple Watch targets
+description: watchOS companion apps and watch face complications
+---
+
+Expo Apple Targets supports both Apple Watch companion apps and watch face complications (widgets).
+
+## Watch app vs watch widget
+
+Apple Watch supports two target types:
+
+<CardGroup cols={2}>
+  <Card title="Watch App" icon="watch">
+    Full watchOS app that runs alongside your iOS app
+  </Card>
+  <Card title="Watch Widget" icon="grid-2">
+    Watch face complications using WidgetKit
+  </Card>
+</CardGroup>
+
+## Watch App
+
+A companion watchOS app that pairs with your iOS app.
+
+### Extension point
+
+| Property | Value |
+| --- | --- |
+| **Type** | `watch` |
+| **Extension Point** | None (standalone watchOS app) |
+| **Product Type** | `com.apple.product-type.application` |
+| **Frameworks** | All watchOS frameworks |
+| **Embedded Swift** | Yes |
+
+### Creating a watch app
+
+```bash
+npx create-target watch
+```
+
+Configure the watch app:
+
+```javascript
+/** @type {import('@bacons/apple-targets/app.plugin').Config} */
+module.exports = {
+  type: "watch",
+  deploymentTarget: "10.0", // watchOS version
+};
+```
+
+### Watch app architecture
+
+Watch apps use SwiftUI for the interface:
+
+```swift
+import SwiftUI
+
+@main
+struct MyWatchApp: App {
+    var body: some Scene {
+        WindowGroup {
+            ContentView()
+        }
+    }
+}
+
+struct ContentView: View {
+    var body: some View {
+        VStack {
+            Text("Hello, Watch!")
+            Button("Action") {
+                // Handle button tap
+            }
+        }
+    }
+}
+```
+
+### Communication with iOS app
+
+Use WatchConnectivity to communicate between iOS and watchOS:
+
+```swift
+import WatchConnectivity
+
+class WatchConnectivityManager: NSObject, WCSessionDelegate {
+    static let shared = WatchConnectivityManager()
+    
+    func setup() {
+        if WCSession.isSupported() {
+            let session = WCSession.default
+            session.delegate = self
+            session.activate()
+        }
+    }
+    
+    func sendMessage(_ message: [String: Any]) {
+        WCSession.default.sendMessage(message, replyHandler: nil)
+    }
+    
+    // Delegate methods
+    func session(_ session: WCSession, activationDidCompleteWith activationState: WCSessionActivationState, error: Error?) {
+        // Handle activation
+    }
+    
+    func session(_ session: WCSession, didReceiveMessage message: [String : Any]) {
+        // Handle received message
+    }
+}
+```
+
+From React Native, you'll need to create a native module to use WatchConnectivity.
+
+## Watch Widget (Complications)
+
+Watch face complications using WidgetKit.
+
+### Extension point
+
+| Property | Value |
+| --- | --- |
+| **Type** | `watch-widget` |
+| **Extension Point** | `com.apple.widgetkit-extension` (watch) |
+| **Frameworks** | `WidgetKit`, `SwiftUI` |
+| **App Groups** | Enabled by default |
+
+### Creating a watch widget
+
+```bash
+npx create-target watch-widget
+```
+
+Configure the complication:
+
+```javascript
+/** @type {import('@bacons/apple-targets/app.plugin').Config} */
+module.exports = {
+  type: "watch-widget",
+  colors: {
+    $accent: "#FF6B6B",
+  },
+  entitlements: {
+    "com.apple.security.application-groups": ["group.com.myapp.data"],
+  },
+};
+```
+
+### Watch widget implementation
+
+```swift
+import WidgetKit
+import SwiftUI
+
+struct MyWatchWidget: Widget {
+    let kind: String = "MyWatchWidget"
+    
+    var body: some WidgetConfiguration {
+        StaticConfiguration(kind: kind, provider: Provider()) { entry in
+            MyWatchWidgetView(entry: entry)
+        }
+        .configurationDisplayName("My Widget")
+        .description("Shows app data")
+        .supportedFamilies([
+            .accessoryCircular,
+            .accessoryRectangular,
+            .accessoryInline
+        ])
+    }
+}
+
+struct Provider: TimelineProvider {
+    func placeholder(in context: Context) -> SimpleEntry {
+        SimpleEntry(date: Date(), value: "0")
+    }
+    
+    func getSnapshot(in context: Context, completion: @escaping (SimpleEntry) -> ()) {
+        let entry = SimpleEntry(date: Date(), value: "42")
+        completion(entry)
+    }
+    
+    func getTimeline(in context: Context, completion: @escaping (Timeline<Entry>) -> ()) {
+        // Read from App Groups
+        let defaults = UserDefaults(suiteName: "group.com.myapp.data")
+        let value = defaults?.string(forKey: "counter") ?? "0"
+        
+        let entry = SimpleEntry(date: Date(), value: value)
+        let timeline = Timeline(entries: [entry], policy: .never)
+        completion(timeline)
+    }
+}
+
+struct SimpleEntry: TimelineEntry {
+    let date: Date
+    let value: String
+}
+
+struct MyWatchWidgetView: View {
+    var entry: Provider.Entry
+    
+    var body: some View {
+        Text(entry.value)
+            .font(.system(.title, design: .rounded))
+    }
+}
+```
+
+### Complication families
+
+Watch widgets support different complication families:
+
+| Family | Description |
+| --- | --- |
+| `.accessoryCircular` | Circular complication |
+| `.accessoryRectangular` | Rectangular complication |
+| `.accessoryInline` | Inline text complication |
+| `.accessoryCorner` | Corner complication |
+
+## Sharing data with watch
+
+Use App Groups to share data:
+
+```javascript
+import { ExtensionStorage } from "@bacons/apple-targets";
+
+const storage = new ExtensionStorage("group.com.myapp.data");
+storage.set("counter", 42);
+ExtensionStorage.reloadWidget(); // Works for watch widgets too
+```
+
+Access from watch:
+
+```swift
+let defaults = UserDefaults(suiteName: "group.com.myapp.data")
+let counter = defaults?.integer(forKey: "counter") ?? 0
+```
+
+## Deployment target
+
+Set the minimum watchOS version:
+
+```javascript
+module.exports = {
+  type: "watch",
+  deploymentTarget: "10.0", // watchOS 10.0+
+};
+```
+
+## Best practices
+
+<Accordion title="Optimize for small screens">
+  - Use large, readable text
+  - Minimize the number of UI elements
+  - Support Digital Crown scrolling
+  - Test on different watch sizes
+</Accordion>
+
+<Accordion title="Design for glanceability">
+  - Show the most important info first
+  - Use clear icons and symbols
+  - Support all complication families
+  - Update complications when data changes
+</Accordion>
+
+<Accordion title="Manage battery life">
+  - Minimize background updates
+  - Use efficient timeline updates
+  - Avoid unnecessary network requests
+  - Cache data locally
+</Accordion>
+
+## Learn more
+
+<CardGroup cols={2}>
+  <Card title="Watch apps guide" icon="book" href="/guides/watch-apps">
+    Detailed watch app guide
+  </Card>
+  <Card title="Sharing data" icon="database" href="/guides/sharing-data">
+    Share data with watch
+  </Card>
+  <Card title="Widget targets" icon="grid-2" href="/targets/widgets">
+    iOS widget documentation
+  </Card>
+  <Card title="Apple documentation" icon="apple" href="https://developer.apple.com/watchos/">
+    Official watchOS documentation
+  </Card>
+</CardGroup>

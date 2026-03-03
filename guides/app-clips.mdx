@@ -1,0 +1,323 @@
+---
+title: App Clips
+description: Create lightweight app experiences that launch instantly from websites, NFC tags, and QR codes
+---
+
+App Clips are small parts of your app that can be launched instantly without installation. They're perfect for quick transactions, reservations, or content sharing. With Expo Router's deep linking, App Clips leverage the full power of universal links.
+
+<Warning>
+App Clips are complex to set up correctly. Read this entire guide carefully before starting.
+</Warning>
+
+## Real-World Example
+
+[Pillar Valley](https://pillarvalley.expo.app) has a working App Clip implementation. Open the link on iOS to test it.
+
+## Setup Process
+
+<Steps>
+  <Step title="Generate the App Clip target">
+    ```bash
+    npx create-target clip
+    ```
+
+    This creates `targets/clip/` with:
+    - `expo-target.config.js` — Target configuration
+    - `AppDelegate.swift` — App Clip entry point with React Native support
+    - `pods.rb` — CocoaPods configuration for React Native
+    - `Base.lproj/SplashScreen.storyboard` — Launch screen
+  </Step>
+
+  <Step title="Configure the target">
+    ```js targets/clip/expo-target.config.js
+    /** @type {import('@bacons/apple-targets/app.plugin').Config} */
+    module.exports = {
+      type: "clip",
+      icon: "../../assets/icon.png",
+      
+      // Enable JS bundle embedding for production
+      exportJs: true,
+      
+      // App Clips should use a lower deployment target
+      deploymentTarget: "16.0",
+      
+      // Bundle ID must be a child of your main app
+      bundleIdentifier: ".clip",
+    };
+    ```
+  </Step>
+
+  <Step title="Configure entitlements">
+    Add your website URL to `targets/clip/clip.entitlements`:
+
+    ```xml
+    <?xml version="1.0" encoding="UTF-8"?>
+    <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+    <plist version="1.0">
+    <dict>
+      <key>com.apple.developer.parent-application-identifiers</key>
+      <array>
+        <string>$(AppIdentifierPrefix)com.yourapp.bundleid</string>
+      </array>
+      <key>com.apple.developer.associated-domains</key>
+      <array>
+        <string>appclips:pillarvalley.expo.app</string>
+      </array>
+    </dict>
+    </plist>
+    ```
+
+    <Note>
+    The parent application identifier is auto-configured by the plugin.
+    </Note>
+  </Step>
+
+  <Step title="Run prebuild and sign in Xcode">
+    ```bash
+    npx expo prebuild -p ios --clean
+    xed ios
+    ```
+
+    **Critical:** Navigate to the signing tab for both the main app and App Clip targets. This ensures the first version of code signing is correct.
+  </Step>
+</Steps>
+
+## Deep Linking Setup
+
+### Apple App Site Association (AASA)
+
+Create `public/.well-known/apple-app-site-association` in your web project:
+
+```json
+{
+  "appclips": {
+    "apps": ["<TeamID>.<AppClipBundleID>"]
+  }
+}
+```
+
+Example with Team ID `QQ57RJ5UTD` and bundle ID `com.evanbacon.pillarvalley.clip`:
+
+```json
+{
+  "appclips": {
+    "apps": ["QQ57RJ5UTD.com.evanbacon.pillarvalley.clip"]
+  }
+}
+```
+
+<Warning>
+Deploy the AASA file to your production website at `https://yourdomain.com/.well-known/apple-app-site-association` (no file extension).
+</Warning>
+
+### Website Meta Tags
+
+Add these meta tags to your website's HTML. For fast loading, put them in `app/+html.tsx`:
+
+```tsx app/+html.tsx
+import { ScrollViewStyleReset } from 'expo-router/html';
+import type { PropsWithChildren } from 'react';
+
+export default function Root({ children }: PropsWithChildren) {
+  return (
+    <html lang="en">
+      <head>
+        <meta charSet="utf-8" />
+        <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
+        <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+        
+        {/* App Clip meta tag */}
+        <meta
+          name="apple-itunes-app"
+          content="app-id=1336398804, app-clip-bundle-id=com.evanbacon.pillarvalley.clip, app-clip-display=card"
+        />
+        
+        <ScrollViewStyleReset />
+      </head>
+      <body>{children}</body>
+    </html>
+  );
+}
+```
+
+### Open Graph Image
+
+App Clips require an `og:image` meta tag. Use `expo-router/head` in your page:
+
+```tsx
+import { Head } from 'expo-router/head';
+
+export default function Page() {
+  return (
+    <>
+      <Head>
+        {/* Required for App Clips: 1200×630 PNG */}
+        <meta property="og:image" content="https://pillarvalley.expo.app/og.png" />
+      </Head>
+      
+      {/* Your page content */}
+    </>
+  );
+}
+```
+
+<Note>
+You also need an 1800×1200 image for the App Store Connect preview.
+</Note>
+
+## Handling Default App Clip URLs
+
+App Clips have a default URL: `https://appclip.apple.com/id?p=<bundle-id>`. Handle redirection with a native intent file:
+
+```ts app/+native-intent.ts
+export function redirectSystemPath({ path }: { path: string }): string {
+  try {
+    const url = new URL(path);
+    
+    // Redirect default App Clip URL to your app's home
+    if (url.hostname === "appclip.apple.com") {
+      return "/?ref=" + encodeURIComponent(path);
+    }
+    
+    return path;
+  } catch {
+    return path;
+  }
+}
+```
+
+## App Clip Implementation
+
+The generated AppDelegate supports React Native and Expo Router:
+
+<CodeGroup>
+```swift targets/clip/AppDelegate.swift
+import Expo
+import React
+import ReactAppDependencyProvider
+
+@UIApplicationMain
+public class AppDelegate: ExpoAppDelegate {
+  var window: UIWindow?
+  var reactNativeDelegate: ExpoReactNativeFactoryDelegate?
+  var reactNativeFactory: RCTReactNativeFactory?
+
+  public override func application(
+    _ application: UIApplication,
+    didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
+  ) -> Bool {
+    let delegate = ReactNativeDelegate()
+    let factory = ExpoReactNativeFactory(delegate: delegate)
+    delegate.dependencyProvider = RCTAppDependencyProvider()
+
+    reactNativeDelegate = delegate
+    reactNativeFactory = factory
+    bindReactNativeFactory(factory)
+
+    window = UIWindow(frame: UIScreen.main.bounds)
+    factory.startReactNative(
+      withModuleName: "main",
+      in: window,
+      launchOptions: launchOptions)
+
+    return super.application(application, didFinishLaunchingWithOptions: launchOptions)
+  }
+
+  // Universal Links support
+  public override func application(
+    _ application: UIApplication,
+    continue userActivity: NSUserActivity,
+    restorationHandler: @escaping ([UIUserActivityRestoring]?) -> Void
+  ) -> Bool {
+    let result = RCTLinkingManager.application(application, continue: userActivity, restorationHandler: restorationHandler)
+    return super.application(application, continue: userActivity, restorationHandler: restorationHandler) || result
+  }
+}
+```
+
+```ruby targets/clip/pods.rb
+require File.join(File.dirname(`node --print "require.resolve('react-native/package.json')"`), "scripts/react_native_pods")
+
+exclude = []
+use_expo_modules!(exclude: exclude)
+
+config_command = [
+  'node',
+  '--no-warnings',
+  '--eval',
+  'require(require.resolve(\'expo-modules-autolinking\', { paths: [require.resolve(\'expo/package.json\')] }))(process.argv.slice(1))',
+  'react-native-config',
+  '--json',
+  '--platform',
+  'ios'
+]
+
+config = use_native_modules!(config_command)
+
+use_react_native!(
+  :path => config[:reactNativePath],
+  :hermes_enabled => podfile_properties['expo.jsEngine'] == nil || podfile_properties['expo.jsEngine'] == 'hermes',
+  :app_path => "#{Pod::Config.instance.installation_root}/..",
+  :privacy_file_aggregation_enabled => podfile_properties['apple.privacyManifestAggregationEnabled'] != 'false',
+)
+```
+</CodeGroup>
+
+## Detecting Which Target is Running
+
+Use `expo-application` to check the bundle identifier:
+
+```tsx
+import * as Application from 'expo-application';
+
+const isAppClip = Application.applicationId?.endsWith('.clip');
+
+if (isAppClip) {
+  // Show App Clip-specific UI
+}
+```
+
+## Important Considerations
+
+<Warning>
+**Before deploying:**
+
+1. Build the app first, then the website. The website can be updated instantly if needed.
+2. Ensure all build numbers match across `CURRENT_PROJECT_VERSION` and `CFBundleVersion`.
+3. Don't include `expo-updates` in the App Clip — it will cause build failures.
+4. Use `expo-linking` instead of React Native's Linking API for better App Clip support.
+</Warning>
+
+### Testing
+
+- **Local testing is extremely difficult.** You can set up a local experience in Settings > Developer, but it's unreliable.
+- **Use TestFlight** for real deep linking tests.
+- The App Clip binary appears ~5 minutes after approval, but website integration takes ~25 minutes.
+
+### Required React Native Patch
+
+You may need [this React Native patch](https://github.com/facebook/react-native/pull/47000) to prevent crashes when launching from TestFlight. Alternatively, set up App Clip experiences in App Store Connect.
+
+## CocoaPods Configuration
+
+The `targets/clip/pods.rb` file enables React Native in your App Clip. This file is automatically linked by the plugin and executes inside the target's Podfile block:
+
+```rb
+target "clip" do
+  # Your pods.rb content goes here
+end
+```
+
+## Code Signing with EAS
+
+Code signing is handled by [EAS Build](https://docs.expo.dev/build/introduction/). The plugin adds the necessary entitlements automatically.
+
+<Note>
+App Clip code signing automation is still being improved. Manual signing in Xcode may be required.
+</Note>
+
+## Next Steps
+
+- Read Apple's [App Clip documentation](https://developer.apple.com/app-clips/)
+- Learn about [sharing data between targets](/guides/sharing-data)
+- Explore the [Pillar Valley example](https://github.com/EvanBacon/pillar-valley)

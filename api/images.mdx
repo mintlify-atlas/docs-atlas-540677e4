@@ -1,0 +1,463 @@
+---
+title: 'Images'
+description: 'Adding custom image assets to your target xcassets'
+---
+
+The `images` property in your target configuration allows you to add custom image assets to the target's `Assets.xcassets`. These images can be used in your Swift code and support multiple scale factors (@1x, @2x, @3x).
+
+## Basic Usage
+
+Define images in your `expo-target.config.js`:
+
+```js
+module.exports = {
+  type: "widget",
+  images: {
+    // Single image (auto-generates all scales)
+    logo: "./assets/logo.png",
+    
+    // Image from URL
+    avatar: "https://github.com/evanbacon.png",
+    
+    // Multiple scales
+    icon: {
+      "1x": "./assets/icon.png",
+      "2x": "./assets/icon@2x.png",
+      "3x": "./assets/icon@3x.png"
+    }
+  }
+};
+```
+
+## Image Sources
+
+### Local File Paths
+
+Provide a relative or absolute path to a local image file:
+
+```js
+images: {
+  logo: "./assets/logo.png",
+  background: "./images/bg.jpg",
+  icon: "/absolute/path/to/icon.png"
+}
+```
+
+Supported formats:
+- PNG (`.png`)
+- JPEG (`.jpg`, `.jpeg`)
+- SVG (`.svg`)
+- Other formats supported by `@expo/image-utils`
+
+### Remote URLs
+
+Provide a URL to download the image:
+
+```js
+images: {
+  avatar: "https://github.com/evanbacon.png",
+  banner: "https://example.com/banner.jpg"
+}
+```
+
+Images are downloaded and cached during the prebuild process.
+
+### Multiple Scales
+
+Provide different images for each scale factor:
+
+```js
+images: {
+  logo: {
+    "1x": "./assets/logo.png",      // 100x100
+    "2x": "./assets/logo@2x.png",   // 200x200
+    "3x": "./assets/logo@3x.png"    // 300x300
+  }
+}
+```
+
+<ParamField path="1x" type="string">
+  Image for 1x scale (standard resolution). Used on non-Retina displays.
+</ParamField>
+
+<ParamField path="2x" type="string">
+  Image for 2x scale (Retina displays). This is the most common resolution for modern iOS devices.
+</ParamField>
+
+<ParamField path="3x" type="string">
+  Image for 3x scale (Retina HD displays). Used on iPhone Plus, Pro, and Pro Max models.
+</ParamField>
+
+**Note:** If you provide only one scale, iOS will use it for all scales. For best quality, provide all three scales.
+
+## Using Images in Swift
+
+Images are accessible as named assets in SwiftUI and UIKit:
+
+<Tabs>
+  <Tab title="SwiftUI">
+    ```swift
+    import SwiftUI
+
+    struct MyWidgetView: View {
+        var body: some View {
+            VStack {
+                // Simple image
+                Image("logo")
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 100, height: 100)
+                
+                // Image with system symbol fallback
+                if let avatarImage = UIImage(named: "avatar") {
+                    Image(uiImage: avatarImage)
+                        .clipShape(Circle())
+                } else {
+                    Image(systemName: "person.circle.fill")
+                }
+            }
+        }
+    }
+    ```
+  </Tab>
+  <Tab title="UIKit">
+    ```swift
+    import UIKit
+
+    // Load image
+    let logoImage = UIImage(named: "logo")
+    let avatarImage = UIImage(named: "avatar")
+
+    // Use in image view
+    let imageView = UIImageView(image: logoImage)
+    imageView.contentMode = .scaleAspectFit
+    view.addSubview(imageView)
+
+    // Check if image exists
+    if let image = UIImage(named: "background") {
+        view.backgroundColor = UIColor(patternImage: image)
+    }
+    ```
+  </Tab>
+</Tabs>
+
+The system automatically selects the appropriate scale based on the device's screen resolution.
+
+## Image Asset Generation
+
+When you run `expo prebuild`, the plugin automatically:
+
+1. Creates an `Assets.xcassets` directory in your target
+2. Generates an `.imageset` subdirectory for each image
+3. Downloads remote images and caches them
+4. Generates missing scales if only one image is provided
+5. Creates a `Contents.json` file with the image metadata
+
+The generated structure looks like this:
+
+```
+targets/
+  MyWidget/
+    Assets.xcassets/
+      logo.imageset/
+        1x.png
+        2x.png
+        3x.png
+        Contents.json
+      avatar.imageset/
+        1x.png
+        Contents.json
+```
+
+## TypeScript Type Definitions
+
+```typescript
+type ImageConfig = Record<
+  string,
+  string | {
+    "1x"?: string;
+    "2x"?: string;
+    "3x"?: string;
+  }
+>;
+```
+
+## Complete Example
+
+Here's a complete example showing how to define and use images in a widget:
+
+<Tabs>
+  <Tab title="Config">
+    ```js
+    // targets/MyWidget/expo-target.config.js
+    module.exports = {
+      type: "widget",
+      images: {
+        // App logo - single file, auto-scales
+        logo: "./assets/logo.png",
+        
+        // Background image from URL
+        background: "https://example.com/widget-bg.jpg",
+        
+        // Avatar from GitHub
+        avatar: "https://github.com/evanbacon.png",
+        
+        // Custom icon with all scales
+        statusIcon: {
+          "1x": "./assets/status-icon.png",
+          "2x": "./assets/status-icon@2x.png",
+          "3x": "./assets/status-icon@3x.png"
+        },
+        
+        // Chart image
+        chart: "./assets/chart.png",
+        
+        // Decorative elements
+        star: "./assets/star.png",
+        badge: "./assets/badge.png"
+      }
+    };
+    ```
+  </Tab>
+  <Tab title="Swift">
+    ```swift
+    import SwiftUI
+    import WidgetKit
+
+    struct MyWidgetView: View {
+        var entry: Provider.Entry
+        
+        var body: some View {
+            ZStack {
+                // Background image
+                if let bgImage = UIImage(named: "background") {
+                    Image(uiImage: bgImage)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .opacity(0.3)
+                }
+                
+                VStack(spacing: 12) {
+                    // Header with logo and avatar
+                    HStack {
+                        Image("logo")
+                            .resizable()
+                            .frame(width: 40, height: 40)
+                        
+                        Spacer()
+                        
+                        Image("avatar")
+                            .resizable()
+                            .frame(width: 32, height: 32)
+                            .clipShape(Circle())
+                    }
+                    
+                    // Status icon
+                    Image("statusIcon")
+                        .resizable()
+                        .frame(width: 24, height: 24)
+                    
+                    // Chart
+                    Image("chart")
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(height: 80)
+                    
+                    // Footer with decorative elements
+                    HStack {
+                        Image("star")
+                            .resizable()
+                            .frame(width: 16, height: 16)
+                        Text("Premium")
+                        Image("badge")
+                            .resizable()
+                            .frame(width: 16, height: 16)
+                    }
+                }
+                .padding()
+            }
+        }
+    }
+    ```
+  </Tab>
+</Tabs>
+
+## Best Practices
+
+### Provide All Scales
+
+For the best visual quality, provide all three scale factors:
+
+```js
+images: {
+  icon: {
+    "1x": "./assets/icon.png",      // 50x50
+    "2x": "./assets/icon@2x.png",   // 100x100
+    "3x": "./assets/icon@3x.png"    // 150x150
+  }
+}
+```
+
+### Optimize Image Sizes
+
+Keep images as small as possible while maintaining quality. Widgets have limited space and memory:
+
+- Use PNG for images with transparency
+- Use JPEG for photos and complex images
+- Optimize images before adding them to your project
+- Consider using vector assets (SF Symbols) when possible
+
+### Use Descriptive Names
+
+Name images based on their purpose:
+
+```js
+// Good
+images: {
+  profileAvatar: "./avatar.png",
+  statusIndicator: "./status.png",
+  chartBackground: "./chart-bg.png"
+}
+
+// Avoid
+images: {
+  image1: "./img1.png",
+  pic: "./pic.png",
+  asset: "./asset.png"
+}
+```
+
+### Cache Remote Images
+
+Remote images are downloaded during prebuild and cached in the `.expo` directory. This ensures:
+
+- Faster subsequent builds
+- Offline support
+- Consistent images across builds
+
+### Fallback for Missing Images
+
+Always handle the case where an image might not load:
+
+```swift
+if let image = UIImage(named: "avatar") {
+    Image(uiImage: image)
+} else {
+    Image(systemName: "person.circle.fill")
+}
+```
+
+## Icon vs Images
+
+Note the difference between the `icon` config property and `images`:
+
+- **`icon`**: The app/extension icon shown on the home screen. Automatically generates all required sizes for iOS.
+- **`images`**: Custom images used within your extension's UI.
+
+```js
+module.exports = {
+  type: "widget",
+  
+  // App icon (shown on home screen)
+  icon: "./assets/app-icon.png",
+  
+  // Custom images (used in your code)
+  images: {
+    logo: "./assets/logo.png",
+    background: "./assets/bg.png"
+  }
+};
+```
+
+## Troubleshooting
+
+### Images not showing up
+
+1. Make sure you've run `expo prebuild` after adding images
+2. Check that the image name is correctly spelled in Swift
+3. Verify the `Assets.xcassets` directory exists in your target folder
+4. Check the file path is correct and the image file exists
+
+### Image quality looks poor
+
+1. Ensure you're providing appropriately sized images for each scale
+2. Use PNG format for images with sharp edges or transparency
+3. Avoid upscaling small images - provide native resolution images
+
+### Remote images not downloading
+
+1. Check your internet connection during prebuild
+2. Verify the URL is accessible
+3. Look for error messages in the prebuild output
+4. Try downloading the image manually to test the URL
+
+### Build fails with image errors
+
+1. Check that image files aren't corrupted
+2. Ensure image formats are supported (PNG, JPEG, SVG)
+3. Verify file paths don't contain special characters
+4. Clear the `.expo` cache and try again:
+   ```bash
+   rm -rf .expo
+   expo prebuild --clean
+   ```
+
+## Image Caching
+
+Images are cached in `.expo/widget-icons-{target-name}/` during prebuild. This cache:
+
+- Speeds up subsequent builds
+- Allows offline development
+- Is automatically invalidated when image sources change
+
+To clear the cache:
+
+```bash
+rm -rf .expo
+expoprebuild --clean
+```
+
+## Advanced Usage
+
+### Conditional Images
+
+Use a config function to conditionally include images:
+
+```js
+module.exports = (config) => {
+  const isDev = config.extra?.isDev || false;
+  
+  return {
+    type: "widget",
+    images: {
+      logo: isDev 
+        ? "./assets/logo-dev.png" 
+        : "./assets/logo-prod.png",
+      ...(isDev && { debugOverlay: "./assets/debug.png" })
+    }
+  };
+};
+```
+
+### Dynamic Image Sources
+
+Generate image sources programmatically:
+
+```js
+const avatarImages = [
+  "alice",
+  "bob",
+  "charlie"
+].reduce((acc, name) => {
+  acc[`avatar_${name}`] = `./assets/avatars/${name}.png`;
+  return acc;
+}, {});
+
+module.exports = {
+  type: "widget",
+  images: {
+    ...avatarImages,
+    logo: "./assets/logo.png"
+  }
+};
+```

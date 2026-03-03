@@ -1,0 +1,341 @@
+---
+title: Share Extensions
+description: Add your app to the iOS share sheet to receive content from other apps
+---
+
+Share Extensions allow users to share content from other apps directly to your app. They appear in the iOS share sheet and can receive text, URLs, images, and other data types.
+
+## Getting Started
+
+<Steps>
+  <Step title="Generate the share extension">
+    ```bash
+    npx create-target share
+    ```
+
+    This creates `targets/share/` with:
+    - `expo-target.config.js` — Target configuration
+    - `ShareViewController.swift` — Extension entry point with SwiftUI
+  </Step>
+
+  <Step title="Configure the target">
+    ```js targets/share/expo-target.config.js
+    /** @type {import('@bacons/apple-targets/app.plugin').Config} */
+    module.exports = {
+      type: "share",
+      icon: "../../assets/icon.png",
+      
+      // Share app groups to communicate with main app
+      entitlements: {
+        "com.apple.security.application-groups": ["group.com.yourapp.shared"],
+      },
+    };
+    ```
+  </Step>
+
+  <Step title="Run prebuild">
+    ```bash
+    npx expo prebuild -p ios --clean
+    ```
+  </Step>
+
+  <Step title="Test in Xcode">
+    ```bash
+    xed ios
+    ```
+
+    Select the share extension scheme and run it. Xcode will prompt you to choose an app to run the extension within (e.g., Safari).
+  </Step>
+</Steps>
+
+## Share Extension Implementation
+
+The generated template uses SwiftUI for a modern UI:
+
+```swift targets/share/ShareViewController.swift
+import UIKit
+import Social
+import SwiftUI
+
+class ShareViewController: SLComposeServiceViewController {
+  override func viewDidLoad() {
+    super.viewDidLoad()
+    
+    // Extract the shared text from the extension context
+    if let item = extensionContext?.inputItems.first as? NSExtensionItem,
+       let itemProvider = item.attachments?.first as? NSItemProvider,
+       itemProvider.hasItemConformingToTypeIdentifier("public.plain-text") {
+      itemProvider.loadItem(forTypeIdentifier: "public.plain-text", options: nil) { [weak self] (string, error) in
+        if let error = error {
+          print("ItemProvider error: \(error)")
+        }
+        
+        if let string = string as? String {
+          DispatchQueue.main.async {
+            self?.sharedText = string
+            self?.setupUI()
+          }
+        }
+      }
+    } else {
+      setupUI()
+    }
+  }
+  
+  private var sharedText: String = "Loading..."
+  
+  func setupUI() {
+    let contentView = ShareView(sharedText: sharedText)
+    
+    let hostingController = UIHostingController(rootView: contentView)
+    addChild(hostingController)
+    hostingController.view.translatesAutoresizingMaskIntoConstraints = false
+    view.addSubview(hostingController.view)
+    
+    NSLayoutConstraint.activate([
+      hostingController.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+      hostingController.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+      hostingController.view.topAnchor.constraint(equalTo: view.topAnchor),
+      hostingController.view.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+    ])
+    
+    hostingController.didMove(toParent: self)
+  }
+  
+  override func isContentValid() -> Bool {
+    // Validate content here
+    return true
+  }
+  
+  override func didSelectPost() {
+    // Process the shared content
+    let finalText = "Here is a nice text I found: " + contentText
+    
+    // Return the result
+    let outputItem = NSExtensionItem()
+    outputItem.attributedContentText = NSAttributedString(string: finalText)
+    extensionContext?.completeRequest(returningItems: [outputItem], completionHandler: nil)
+  }
+}
+
+struct ShareView: View {
+  let sharedText: String
+  
+  var body: some View {
+    Text("Selected: \(sharedText)")
+      .font(.title)
+      .foregroundColor(.blue)
+      .padding()
+  }
+}
+```
+
+## Handling Different Content Types
+
+Share extensions can receive various content types. Here's how to handle them:
+
+### Text Content
+
+```swift
+if itemProvider.hasItemConformingToTypeIdentifier("public.plain-text") {
+  itemProvider.loadItem(forTypeIdentifier: "public.plain-text", options: nil) { (item, error) in
+    if let text = item as? String {
+      // Handle text
+    }
+  }
+}
+```
+
+### URLs
+
+```swift
+if itemProvider.hasItemConformingToTypeIdentifier("public.url") {
+  itemProvider.loadItem(forTypeIdentifier: "public.url", options: nil) { (item, error) in
+    if let url = item as? URL {
+      // Handle URL
+    }
+  }
+}
+```
+
+### Images
+
+```swift
+if itemProvider.hasItemConformingToTypeIdentifier("public.image") {
+  itemProvider.loadItem(forTypeIdentifier: "public.image", options: nil) { (item, error) in
+    if let image = item as? UIImage {
+      // Handle image
+    }
+  }
+}
+```
+
+## Communicating with Your Main App
+
+Use App Groups to share data between the share extension and your main app:
+
+<Steps>
+  <Step title="Configure App Groups">
+    Add to both your main app's `app.json` and the share extension's `expo-target.config.js`:
+
+    ```json app.json
+    {
+      "expo": {
+        "ios": {
+          "entitlements": {
+            "com.apple.security.application-groups": ["group.com.yourapp.shared"]
+          }
+        }
+      }
+    }
+    ```
+
+    ```js targets/share/expo-target.config.js
+    module.exports = (config) => ({
+      type: "share",
+      entitlements: {
+        "com.apple.security.application-groups":
+          config.ios.entitlements["com.apple.security.application-groups"],
+      },
+    });
+    ```
+  </Step>
+
+  <Step title="Write data from the extension">
+    ```swift
+    let defaults = UserDefaults(suiteName: "group.com.yourapp.shared")
+    defaults?.set(sharedText, forKey: "lastSharedText")
+    defaults?.synchronize()
+    ```
+  </Step>
+
+  <Step title="Read data in your React Native app">
+    ```tsx
+    import { ExtensionStorage } from "@bacons/apple-targets";
+
+    const storage = new ExtensionStorage("group.com.yourapp.shared");
+    const lastSharedText = storage.get("lastSharedText");
+    ```
+  </Step>
+</Steps>
+
+See the [Sharing Data guide](/guides/sharing-data) for more details.
+
+## Using React Native in Share Extensions
+
+<Warning>
+Running React Native in share extensions is experimental and increases app size significantly.
+</Warning>
+
+If you need React Native:
+
+1. Set `exportJs: true` in your config:
+
+```js
+module.exports = {
+  type: "share",
+  exportJs: true,
+};
+```
+
+2. Create a `targets/share/pods.rb` file with React Native dependencies (similar to App Clips)
+
+3. Use `expo-application` to detect the share extension:
+
+```tsx
+import * as Application from 'expo-application';
+
+const isShareExtension = Application.applicationId?.includes('.share');
+```
+
+## Customizing the Info.plist
+
+Configure which apps can share to your extension by editing `targets/share/Info.plist`:
+
+```xml
+<key>NSExtension</key>
+<dict>
+  <key>NSExtensionAttributes</key>
+  <dict>
+    <key>NSExtensionActivationRule</key>
+    <dict>
+      <!-- Accept text content -->
+      <key>NSExtensionActivationSupportsText</key>
+      <true/>
+      
+      <!-- Accept URLs -->
+      <key>NSExtensionActivationSupportsWebURLWithMaxCount</key>
+      <integer>1</integer>
+      
+      <!-- Accept images -->
+      <key>NSExtensionActivationSupportsImageWithMaxCount</key>
+      <integer>5</integer>
+    </dict>
+  </dict>
+  <key>NSExtensionPointIdentifier</key>
+  <string>com.apple.share-services</string>
+  <key>NSExtensionPrincipalClass</key>
+  <string>ShareViewController</string>
+</dict>
+```
+
+## Opening Your Main App
+
+To open your main app after sharing:
+
+```swift
+override func didSelectPost() {
+  // Save data first
+  let defaults = UserDefaults(suiteName: "group.com.yourapp.shared")
+  defaults?.set(contentText, forKey: "sharedContent")
+  
+  // Open the main app with a URL
+  let url = URL(string: "myapp://shared")!
+  extensionContext?.open(url, completionHandler: { success in
+    self.extensionContext?.completeRequest(returningItems: [], completionHandler: nil)
+  })
+}
+```
+
+Handle the URL in your Expo app:
+
+```tsx
+import { useURL } from 'expo-linking';
+import { useEffect } from 'react';
+import { ExtensionStorage } from '@bacons/apple-targets';
+
+export default function App() {
+  const url = useURL();
+  
+  useEffect(() => {
+    if (url?.includes('shared')) {
+      const storage = new ExtensionStorage('group.com.yourapp.shared');
+      const content = storage.get('sharedContent');
+      
+      // Handle the shared content
+    }
+  }, [url]);
+  
+  return <YourApp />;
+}
+```
+
+## Tips
+
+<Tip>
+**Keep it fast:** Share extensions should launch quickly. Avoid loading large dependencies.
+</Tip>
+
+<Tip>
+**Validate input:** Always check that the content type matches what you expect.
+</Tip>
+
+<Tip>
+**Handle errors gracefully:** Users can share from any app, so expect unexpected data.
+</Tip>
+
+## Next Steps
+
+- Learn about [sharing data between targets](/guides/sharing-data)
+- Read Apple's [Share Extension documentation](https://developer.apple.com/documentation/uikit/share_extensions)
+- Explore [App Groups entitlements](https://developer.apple.com/documentation/bundleresources/entitlements/com_apple_security_application-groups)

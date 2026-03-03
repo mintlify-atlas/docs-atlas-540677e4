@@ -1,0 +1,321 @@
+---
+title: Control Widgets
+description: Add interactive controls to Control Center, lock screen, and Siri with ControlWidget and App Intents
+---
+
+Control Widgets appear in Control Center, Siri suggestions, the lock screen, and Shortcuts. They provide quick actions without opening your app.
+
+<Note>
+Control Widgets require iOS 18+ and are typically added to an existing `widget` target.
+</Note>
+
+## Getting Started
+
+Control Widgets use the App Intents framework and should be placed in the `_shared` folder so they're linked to both your main app and widget target.
+
+<Steps>
+  <Step title="Create a widget target (if needed)">
+    ```bash
+    npx create-target widget
+    ```
+  </Step>
+
+  <Step title="Add Control Widget to _shared folder">
+    Create `targets/widget/_shared/intents.swift` with your control widget code. The `_shared` folder ensures the code is linked to both targets, which is required for controls to work.
+  </Step>
+
+  <Step title="Register the control in your WidgetBundle">
+    Edit `targets/widget/index.swift` to include your control:
+
+    ```swift
+    import WidgetKit
+    import SwiftUI
+
+    @main
+    struct exportWidgets: WidgetBundle {
+        var body: some Widget {
+            widget()
+            widgetControl0()  // Add your control here
+            WidgetLiveActivity()
+        }
+    }
+    ```
+  </Step>
+
+  <Step title="Run prebuild">
+    ```bash
+    npx expo prebuild -p ios --clean
+    ```
+  </Step>
+</Steps>
+
+## Control Widget Example
+
+Here's a complete example of a control widget that launches a URL in your app:
+
+```swift targets/widget/_shared/intents.swift
+import AppIntents
+import SwiftUI
+import WidgetKit
+
+@available(iOS 18.0, *)
+struct widgetControl0: ControlWidget {
+    // Unique ID for the control
+    static let kind: String = "com.bacon.clipdemo.0"
+    
+    var body: some ControlWidgetConfiguration {
+      StaticControlConfiguration(kind: Self.kind) {
+        ControlWidgetButton(action: OpenAppIntent0()) {
+          // Use SF Symbols for icons
+          Label("App Settings", systemImage: "star")
+        }
+      }
+      .displayName("Launch Settings")
+      .description("A control that launches the app settings.")
+    }
+}
+
+// Must be in _shared folder when openAppWhenRun = true
+@available(iOS 18.0, *)
+struct OpenAppIntent0: ControlConfigurationIntent {
+    static let title: LocalizedStringResource = "Launch Settings"
+    static let description = IntentDescription(stringLiteral: "A control that launches the app settings.")
+    static let isDiscoverable = true
+    static let openAppWhenRun: Bool = true
+
+    @MainActor
+    func perform() async throws -> some IntentResult & OpensIntent {
+        // Launch your app with a universal link
+        return .result(opensIntent: OpenURLIntent(URL(string: "https://pillarvalley.expo.app/settings")!))
+    }
+}
+```
+
+## Toggle Control Example
+
+The default template includes a toggle control:
+
+```swift targets/widget/WidgetControl.swift
+import AppIntents
+import SwiftUI
+import WidgetKit
+
+struct widgetControl: ControlWidget {
+    static let kind: String = "com.developer.example.widget"
+
+    var body: some ControlWidgetConfiguration {
+        AppIntentControlConfiguration(
+            kind: Self.kind,
+            provider: Provider()
+        ) { value in
+            ControlWidgetToggle(
+                "Start Timer",
+                isOn: value.isRunning,
+                action: StartTimerIntent(value.name)
+            ) { isRunning in
+                Label(isRunning ? "On" : "Off", systemImage: "timer")
+            }
+        }
+        .displayName("Timer")
+        .description("A an example control that runs a timer.")
+    }
+}
+
+extension widgetControl {
+    struct Value {
+        var isRunning: Bool
+        var name: String
+    }
+
+    struct Provider: AppIntentControlValueProvider {
+        func previewValue(configuration: TimerConfiguration) -> Value {
+            widgetControl.Value(isRunning: false, name: configuration.timerName)
+        }
+
+        func currentValue(configuration: TimerConfiguration) async throws -> Value {
+            let isRunning = true // Check if the timer is running
+            return widgetControl.Value(isRunning: isRunning, name: configuration.timerName)
+        }
+    }
+}
+
+struct TimerConfiguration: ControlConfigurationIntent {
+    static let title: LocalizedStringResource = "Timer Name Configuration"
+
+    @Parameter(title: "Timer Name", default: "Timer")
+    var timerName: String
+}
+
+struct StartTimerIntent: SetValueIntent {
+    static let title: LocalizedStringResource = "Start a timer"
+
+    @Parameter(title: "Timer Name")
+    var name: String
+
+    @Parameter(title: "Timer is running")
+    var value: Bool
+
+    init() {}
+
+    init(_ name: String) {
+        self.name = name
+    }
+
+    func perform() async throws -> some IntentResult {
+        // Start the timer…
+        return .result()
+    }
+}
+```
+
+## Reloading Controls
+
+Update controls from your React Native app:
+
+```tsx
+import { ExtensionStorage } from "@bacons/apple-targets";
+
+// Reload all controls
+ExtensionStorage.reloadControls();
+
+// Reload a specific control by kind
+ExtensionStorage.reloadControls("com.bacon.clipdemo.0");
+```
+
+## Using Custom Icons
+
+Control Widgets only support SF Symbols for icons. To use custom icons:
+
+1. Convert your icon to an SF Symbol using [Create Custom Symbols](https://github.com/jaywcjlove/create-custom-symbols)
+
+2. Add the `.svg` file to `Assets.xcassets` in Xcode
+
+3. Reference it in your Label:
+
+```swift
+Label("My Action", systemImage: "my.custom.icon")
+```
+
+<Note>
+Custom SF Symbols must follow Apple's design guidelines for Control Center icons.
+</Note>
+
+## Sharing Data with Your App
+
+Control Widgets can read and write shared data using App Groups:
+
+```swift
+@available(iOS 18.0, *)
+struct ToggleFeatureIntent: SetValueIntent {
+    @Parameter(title: "Feature Enabled")
+    var value: Bool
+
+    func perform() async throws -> some IntentResult {
+        // Write to shared storage
+        let defaults = UserDefaults(suiteName: "group.com.yourapp.shared")
+        defaults?.set(value, forKey: "featureEnabled")
+        defaults?.synchronize()
+        
+        // Reload controls to reflect new state
+        ControlCenter.shared.reloadAllControls()
+        
+        return .result()
+    }
+}
+```
+
+Read the value in your React Native app:
+
+```tsx
+import { ExtensionStorage } from "@bacons/apple-targets";
+
+const storage = new ExtensionStorage("group.com.yourapp.shared");
+const isEnabled = storage.get("featureEnabled") === "1";
+```
+
+See the [Sharing Data guide](/guides/sharing-data) for more details.
+
+## Control Widget Types
+
+Apple supports several control widget types:
+
+### Button
+
+Single tap action:
+
+```swift
+ControlWidgetButton(action: MyIntent()) {
+    Label("Action", systemImage: "star")
+}
+```
+
+### Toggle
+
+On/off state:
+
+```swift
+ControlWidgetToggle(
+    "Feature",
+    isOn: value.isEnabled,
+    action: ToggleIntent()
+) { isOn in
+    Label(isOn ? "On" : "Off", systemImage: "switch.2")
+}
+```
+
+### Slider
+
+Value adjustment:
+
+```swift
+ControlWidgetSlider(
+    "Volume",
+    value: value.volume,
+    in: 0...100,
+    action: SetVolumeIntent()
+)
+```
+
+## Control Widget Configuration
+
+Customize the appearance and behavior:
+
+```swift
+struct MyControl: ControlWidget {
+    static let kind: String = "com.yourapp.control"
+
+    var body: some ControlWidgetConfiguration {
+        StaticControlConfiguration(kind: Self.kind) {
+            // Your control UI
+        }
+        .displayName("Control Name")              // Name in Control Center
+        .description("What this control does.")   // Description for users
+        .promptsForUserConfiguration()            // Show config UI when added
+    }
+}
+```
+
+## Real-World Example
+
+The [Pillar Valley](https://pillarvalley.expo.app) game uses control widgets for quick actions. The example from the README shows launching different parts of the app from Control Center.
+
+## Debugging
+
+<Tip>
+**Test in Simulator:** Control widgets appear in the Control Center simulator.
+</Tip>
+
+<Tip>
+**Check availability:** Always wrap Control Widget code in `@available(iOS 18.0, *)` checks.
+</Tip>
+
+<Warning>
+**_shared folder is required:** If `openAppWhenRun = true`, the intent MUST be in `_shared/` to be linked to both targets. Otherwise, the app will crash when the control is tapped.
+</Warning>
+
+## Next Steps
+
+- Learn about [App Intents](https://developer.apple.com/documentation/appintents)
+- Read Apple's [ControlWidget documentation](https://developer.apple.com/documentation/swiftui/controlwidget)
+- Explore [sharing data between targets](/guides/sharing-data)
+- Check out [SF Symbols](https://developer.apple.com/sf-symbols/)

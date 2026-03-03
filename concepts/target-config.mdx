@@ -1,0 +1,424 @@
+---
+title: Target Configuration
+description: Complete reference for expo-target.config.js structure, options, and schema
+---
+
+## Configuration Files
+
+Each target directory must contain either:
+- `expo-target.config.js` (JavaScript)
+- `expo-target.config.json` (JSON)
+
+The JavaScript format is more flexible and supports functions for dynamic configuration.
+
+<Note>
+ESM and TypeScript are **not supported** in target configs. Use CommonJS (`module.exports` and `require()`) for compatibility.
+</Note>
+
+## Basic Configuration
+
+A minimal target configuration requires only the `type` property:
+
+```javascript
+/** @type {import('@bacons/apple-targets/app.plugin').Config} */
+module.exports = {
+  type: "widget",
+};
+```
+
+## Complete Schema
+
+Here's the full configuration schema with all available options:
+
+```javascript
+/** @type {import('@bacons/apple-targets/app.plugin').Config} */
+module.exports = {
+  // Required: Type of extension to generate
+  type: "widget",
+
+  // Optional: Name of the target (defaults to directory name)
+  name: "my_widget",
+
+  // Optional: Custom display name for CFBundleDisplayName
+  displayName: "My Widget",
+
+  // Optional: Bundle identifier
+  // If prefixed with ".", appends to main app's bundle ID
+  bundleIdentifier: ".mywidget",
+
+  // Optional: Icon path (local file or URL)
+  icon: "./icon.png",
+
+  // Optional: Additional frameworks to link
+  frameworks: ["UserNotifications", "Intents"],
+
+  // Optional: iOS deployment target (defaults to 18.0)
+  deploymentTarget: "15.1",
+
+  // Optional: Apple Team ID for signing
+  appleTeamId: "TEAM123456",
+
+  // Optional: Entitlements configuration
+  entitlements: {
+    "com.apple.security.application-groups": ["group.com.example.app"],
+  },
+
+  // Optional: Color assets for the target
+  colors: {
+    $accent: "steelblue",
+    $widgetBackground: "dodgerblue",
+    customColor: { light: "#FF0000", dark: "#0000FF" },
+  },
+
+  // Optional: Image assets for the target
+  images: {
+    logo: "./assets/logo.png",
+    banner: "https://example.com/banner.png",
+    retina: {
+      "1x": "./logo@1x.png",
+      "2x": "./logo@2x.png",
+      "3x": "./logo@3x.png",
+    },
+  },
+
+  // Optional: Export JS bundle for React Native targets
+  exportJs: false,
+};
+```
+
+## Configuration Reference
+
+### `type` (required)
+
+**Type:** `ExtensionType`
+
+Specifies the type of Apple target to create. Must be one of 50+ supported types.
+
+```javascript
+type: "widget" // or "clip", "share", "intent", etc.
+```
+
+<Accordion title="View all supported types">
+  - `widget` - Home screen widget
+  - `clip` - App Clip
+  - `share` - Share Extension
+  - `action` - Headless action (share sheet)
+  - `notification-content` - Notification Content Extension
+  - `notification-service` - Notification Service Extension
+  - `intent` - Siri Intent Extension
+  - `intent-ui` - Siri Intent UI Extension
+  - `safari` - Safari Extension
+  - `watch` - Watch App
+  - `watch-widget` - Watch Face Complication
+  - And 40+ more...
+</Accordion>
+
+### `name`
+
+**Type:** `string` (optional)  
+**Default:** Directory name
+
+The internal name of the target. Used for the Xcode target name and product name.
+
+```javascript
+name: "my_widget"
+```
+
+The name is sanitized for Xcode compatibility (from `with-widget.ts:44-56`):
+
+```typescript
+const productName =
+  sanitizeNameForNonDisplayUse(props.name || targetDirName) ||
+  sanitizeNameForNonDisplayUse(targetDirName) ||
+  sanitizeNameForNonDisplayUse(props.type);
+```
+
+### `displayName`
+
+**Type:** `string` (optional)  
+**Default:** `name` value
+
+User-facing display name set as `CFBundleDisplayName` in Info.plist.
+
+```javascript
+displayName: "My Awesome Widget"
+```
+
+### `bundleIdentifier`
+
+**Type:** `string` (optional)  
+**Default:** Auto-generated from main app's bundle ID
+
+The bundle identifier for the target. Supports **relative notation** with dot prefix:
+
+```javascript
+// Relative: appends to main app's bundle ID
+bundleIdentifier: ".mywidget"
+// If main app is "com.example.app", becomes "com.example.app.mywidget"
+
+// Absolute: uses exactly as specified
+bundleIdentifier: "com.example.widget"
+```
+
+For App Clips, the default is `{mainBundleId}.clip` (from `with-widget.ts:299-302`):
+
+```typescript
+if (props.type === "clip") {
+  return mainAppBundleId + ".clip";
+}
+```
+
+### `icon`
+
+**Type:** `string` (optional)
+
+Path to icon image. Supports both local paths and URLs:
+
+```javascript
+// Local file (relative to target directory)
+icon: "./icon.png"
+
+// Absolute path
+icon: "../../assets/icon.png"
+
+// URL
+icon: "https://github.com/expo.png"
+```
+
+The icon is automatically processed and resized for the target's asset catalog.
+
+### `frameworks`
+
+**Type:** `string[]` (optional)  
+**Default:** Type-specific frameworks
+
+Additional system frameworks to link. Appends to the default frameworks for the target type:
+
+```javascript
+frameworks: ["UserNotifications", "Intents", "CoreLocation"]
+```
+
+Each target type has default frameworks defined in `target.ts` TARGET_REGISTRY. For example, widgets get:
+
+```typescript
+frameworks: ["WidgetKit", "SwiftUI", "ActivityKit", "AppIntents"]
+```
+
+### `deploymentTarget`
+
+**Type:** `string` (optional)  
+**Default:** `"18.0"` (iOS), `"11.0"` (watchOS)
+
+Minimum iOS/watchOS version required:
+
+```javascript
+deploymentTarget: "15.1"
+```
+
+WatchOS targets automatically use `DEFAULT_WATCHOS_DEPLOYMENT_TARGET` (from `with-widget.ts:331-333`).
+
+### `appleTeamId`
+
+**Type:** `string` (optional)  
+**Default:** From `app.json` `ios.appleTeamId`
+
+Apple Team ID for code signing:
+
+```javascript
+appleTeamId: "QQ57RJ5UTD"
+```
+
+### `entitlements`
+
+**Type:** `Entitlements` object (optional)
+
+Entitlements configuration for the target. See [Entitlements documentation](/concepts/entitlements) for details.
+
+```javascript
+entitlements: {
+  "com.apple.security.application-groups": ["group.com.example.app"],
+  "com.apple.developer.healthkit": true,
+  "com.apple.developer.associated-domains": ["appclips:example.com"],
+}
+```
+
+<Info>
+Some targets have **automatic entitlements**. For example, App Clips automatically set `com.apple.developer.parent-application-identifiers`.
+</Info>
+
+### `colors`
+
+**Type:** `Record<string, string | DynamicColor>` (optional)
+
+Generates color assets in the target's asset catalog:
+
+```javascript
+colors: {
+  // Static color (hex or CSS color name)
+  primary: "steelblue",
+  
+  // Dynamic color (light/dark mode)
+  background: {
+    light: "#FFFFFF",
+    dark: "#000000",
+  },
+  
+  // Special build setting colors
+  $accent: "red",              // ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME
+  $widgetBackground: "blue",   // ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME
+}
+```
+
+In Swift, access colors via:
+
+```swift
+Color("primary")          // Your custom color
+Color("background")       // Adapts to light/dark mode
+```
+
+### `images`
+
+**Type:** `Record<string, string | ImageSet>` (optional)
+
+Generates image assets in the target's asset catalog:
+
+```javascript
+images: {
+  // Simple image
+  logo: "./assets/logo.png",
+  
+  // URL
+  avatar: "https://github.com/evanbacon.png",
+  
+  // Multi-resolution
+  icon: {
+    "1x": "./icon@1x.png",
+    "2x": "./icon@2x.png",
+    "3x": "./icon@3x.png",
+  },
+}
+```
+
+In Swift, access images via:
+
+```swift
+Image("logo")
+UIImage(named: "avatar")
+```
+
+### `exportJs`
+
+**Type:** `boolean` (optional)  
+**Default:** `true` for `clip`, `false` otherwise
+
+Enables React Native JS bundle export for the target. When `true`, links the main app's Metro bundler build phase:
+
+```javascript
+exportJs: true
+```
+
+<Warning>
+Only use `exportJs: true` for targets that run React Native code (App Clips, Share Extensions). Most extension types cannot run React Native.
+</Warning>
+
+From `with-widget.ts:350-353`:
+
+```typescript
+exportJs:
+  props.exportJs ??
+  // Assume App Clips are used for React Native.
+  props.type === "clip",
+```
+
+## Function-Based Configuration
+
+For dynamic configuration, export a function that receives the Expo config:
+
+```javascript
+/** @type {import('@bacons/apple-targets/app.plugin').ConfigFunction} */
+module.exports = (config) => ({
+  type: "widget",
+  
+  // Sync app groups from main app
+  entitlements: {
+    "com.apple.security.application-groups":
+      config.ios.entitlements["com.apple.security.application-groups"],
+  },
+  
+  // Generate bundle ID from main app
+  bundleIdentifier: `${config.ios.bundleIdentifier}.widget`,
+  
+  // Use environment variables
+  deploymentTarget: process.env.MIN_IOS_VERSION || "18.0",
+});
+```
+
+## Real-World Examples
+
+### Widget with Live Activities
+
+```javascript
+module.exports = {
+  type: "widget",
+  icon: "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e1/FullMoon2010.jpg/1200px-FullMoon2010.jpg",
+  colors: {
+    $accent: "steelblue",
+    $widgetBackground: "dodgerblue",
+  },
+};
+```
+
+### App Clip with Associated Domains
+
+```javascript
+module.exports = (config) => ({
+  type: "clip",
+  name: "clip",
+  icon: "https://github.com/expo.png",
+  entitlements: {
+    "com.apple.developer.associated-domains": [
+      "appclips:pillarvalley.expo.app",
+    ],
+  },
+});
+```
+
+### Share Extension with App Groups
+
+```javascript
+module.exports = {
+  type: "share",
+  displayName: "Share to App",
+  icon: "./assets/share-icon.png",
+  frameworks: ["MobileCoreServices"],
+  entitlements: {
+    "com.apple.security.application-groups": ["group.com.example.app"],
+  },
+};
+```
+
+## TypeScript Support
+
+While the config file itself must be `.js`, you get full IntelliSense via JSDoc:
+
+```javascript
+/** @type {import('@bacons/apple-targets/app.plugin').Config} */
+module.exports = {
+  // Full autocomplete for all properties
+  type: "widget",
+  entitlements: {
+    // Autocomplete for entitlement keys
+  },
+};
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Entitlements" icon="shield-check" href="/concepts/entitlements">
+    Configure app groups and permissions
+  </Card>
+  <Card title="Development Workflow" icon="code" href="/concepts/development-workflow">
+    Learn the prebuild and iteration workflow
+  </Card>
+</CardGroup>

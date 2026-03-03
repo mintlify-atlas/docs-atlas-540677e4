@@ -1,0 +1,329 @@
+---
+title: 'JavaScript Bundling (exportJs)'
+description: 'Bundle React Native code for offline use in App Clips and Share Extensions'
+---
+
+## Overview
+
+The `exportJs` option enables JavaScript bundling for targets that use React Native. When enabled, release builds will bundle your JavaScript code with Metro and embed the bundle/assets for offline use.
+
+<Tip>
+This feature is designed for **App Clips** and **Share Extensions** that need to run React Native code without a development server.
+</Tip>
+
+## When to Use exportJs
+
+Enable `exportJs: true` when your target:
+
+- Runs React Native views (App Clip, Share Extension)
+- Needs to work without a Metro connection
+- Should include JavaScript in release builds
+- Shares code with your main React Native app
+
+<Warning>
+Don't use `exportJs` for pure native extensions like widgets, intents, or notification services. They don't run JavaScript and bundling will waste build time.
+</Warning>
+
+## Configuration
+
+Enable JavaScript bundling in your target's config file:
+
+```js
+// targets/clip/expo-target.config.js
+/** @type {import('@bacons/apple-targets/app.plugin').Config} */
+module.exports = {
+  type: "clip",
+  exportJs: true,  // Enable JS bundling for release builds
+};
+```
+
+## How It Works
+
+When `exportJs: true` is set:
+
+<Accordion title="Build Phase Linking">
+The plugin links the main target's "Bundle React Native code and images" build phase to your extension target. This ensures:
+
+1. Metro bundles JavaScript during release builds
+2. Assets are copied to the extension bundle
+3. Source maps are generated for debugging
+4. Both targets share the same bundle configuration
+</Accordion>
+
+<Accordion title="Development vs Release">
+- **Development builds** (`Debug`): Connect to Metro as usual
+- **Release builds** (`Release`): Use embedded JavaScript bundle
+
+The bundling only affects release builds, so development workflow stays fast.
+</Accordion>
+
+<Accordion title="Bundle Location">
+The JavaScript bundle is embedded at:
+
+```
+YourApp.app/
+├── Frameworks/
+├── ClipExtension.appex/    # Your extension
+│   └── main.jsbundle       # Embedded bundle
+│   └── assets/             # Embedded assets
+```
+
+React Native automatically loads the embedded bundle when running in release mode.
+</Accordion>
+
+## Example: App Clip with React Native
+
+Here's a complete setup for an App Clip that uses React Native:
+
+### 1. Configure CocoaPods
+
+Create a `pods.rb` file in your repository root:
+
+```rb
+# pods.rb
+require File.join(File.dirname(`node --print "require.resolve('react-native/package.json')"`), "scripts/react_native_pods")
+
+exclude = []
+use_expo_modules!(exclude: exclude)
+
+# Autolinking configuration
+config_command = [
+  'node',
+  '--no-warnings',
+  '--eval',
+  'require(require.resolve(\'expo-modules-autolinking\', { paths: [require.resolve(\'expo/package.json\')] }))(process.argv.slice(1))',
+  'react-native-config',
+  '--json',
+  '--platform',
+  'ios'
+]
+
+config = use_native_modules!(config_command)
+
+use_react_native!(
+  :path => config[:reactNativePath],
+  :hermes_enabled => true,
+  :app_path => "#{Pod::Config.instance.installation_root}/.."
+)
+```
+
+### 2. Enable exportJs
+
+```js
+// targets/clip/expo-target.config.js
+module.exports = {
+  type: "clip",
+  exportJs: true,
+  bundleIdentifier: ".clip",
+};
+```
+
+### 3. Detect the Current Target
+
+Use `expo-application` to determine which target is running:
+
+```tsx
+import { applicationId } from 'expo-application';
+
+export default function App() {
+  const isAppClip = applicationId?.endsWith('.clip');
+  
+  return (
+    <View>
+      {isAppClip ? (
+        <AppClipView />  // Show clip-specific UI
+      ) : (
+        <MainAppView />  // Show main app UI
+      )}
+    </View>
+  );
+}
+```
+
+<Tip>
+The bundle identifier is accessible at runtime through `expo-application`. Use this to conditionally render different interfaces for your main app vs. extensions.
+</Tip>
+
+### 4. Prebuild and Run
+
+```bash
+# Generate Xcode project
+npx expo prebuild --clean
+
+# Open in Xcode
+xed ios
+
+# Select your App Clip target and build
+```
+
+## Example: Share Extension with React Native
+
+Share Extensions can also use React Native to provide custom sharing UI:
+
+```js
+// targets/share/expo-target.config.js
+module.exports = {
+  type: "share",
+  exportJs: true,
+  displayName: "Share to App",
+};
+```
+
+Detect the Share Extension in your code:
+
+```tsx
+import { applicationId } from 'expo-application';
+
+export default function ShareSheet() {
+  const isShareExtension = applicationId?.endsWith('.share');
+  
+  if (!isShareExtension) return <MainApp />;
+  
+  return <ShareExtensionUI />;
+}
+```
+
+## Bundle Size Considerations
+
+<Warning>
+App Clips have a **15 MB uncompressed size limit**. Watch your bundle size carefully:
+
+```bash
+# Check bundle size after building
+ls -lh ios/build/Build/Products/Release-iphonesimulator/YourApp.app/*.appex/main.jsbundle
+```
+
+If your bundle is too large:
+- Remove unused dependencies
+- Use dynamic imports for heavy features
+- Optimize assets (compress images, remove unused fonts)
+- Consider native-only UI for the clip
+</Warning>
+
+## Conditional Bundling
+
+<Accordion title="Include only needed code">
+Use Metro's `require` context and dynamic imports to conditionally load code:
+
+```tsx
+// Only load heavy features in the main app
+if (!applicationId?.endsWith('.clip')) {
+  const { AdvancedFeature } = await import('./AdvancedFeature');
+}
+```
+
+This keeps the App Clip bundle small while maintaining full functionality in the main app.
+</Accordion>
+
+<Accordion title="Separate entry points">
+For maximum control, use different entry points:
+
+```json
+// app.json
+{
+  "expo": {
+    "entryPoint": "./index.js"
+  }
+}
+```
+
+```js
+// index.js
+import { applicationId } from 'expo-application';
+import { registerRootComponent } from 'expo';
+
+if (applicationId?.endsWith('.clip')) {
+  const ClipApp = require('./ClipApp').default;
+  registerRootComponent(ClipApp);
+} else {
+  const MainApp = require('./App').default;
+  registerRootComponent(MainApp);
+}
+```
+</Accordion>
+
+## Development Workflow
+
+### Testing with Metro
+
+During development, your extension connects to Metro like the main app:
+
+```bash
+# Start Metro
+npx expo start
+
+# In Xcode, select your extension target and run
+# It will connect to Metro automatically
+```
+
+### Testing Release Builds
+
+To test the embedded bundle:
+
+1. Build in Release mode in Xcode
+2. Or use EAS Build: `eas build --profile preview`
+3. Install on device and test without Metro
+
+<Tip>
+You can test App Clips without publishing by creating local experiences in iOS Settings > Developer > Local Experiences.
+</Tip>
+
+## Troubleshooting
+
+<Accordion title="Bundle not found in release build">
+Ensure:
+
+1. `exportJs: true` is set in your target config
+2. You ran `npx expo prebuild --clean` after adding it
+3. You're building in Release mode (not Debug)
+4. The "Bundle React Native code and images" build phase exists
+</Accordion>
+
+<Accordion title="App crashes on launch in extension">
+Check:
+
+1. Your `pods.rb` file includes React Native dependencies
+2. You're detecting the bundle ID correctly with `expo-application`
+3. There are no app-specific dependencies in shared code
+4. The AppDelegate is properly configured for extensions
+</Accordion>
+
+<Accordion title="Bundle too large for App Clip">
+App Clips have a 15 MB limit. Reduce size by:
+
+1. Removing unused npm packages
+2. Enabling Hermes for better compression
+3. Stripping development code in production
+4. Using native UI instead of React Native
+5. Compressing images and removing unused assets
+
+Check current size:
+
+```bash
+du -sh ios/build/Build/Products/Release-*/YourApp.app/*.appex
+```
+</Accordion>
+
+<Accordion title="Metro connection issues in development">
+If your extension can't connect to Metro:
+
+1. Check Info.plist has `NSAppTransportSecurity` exception
+2. Verify Metro is running on the expected port
+3. Ensure your device and dev machine are on the same network
+4. Try connecting to Metro by IP instead of localhost
+</Accordion>
+
+## Performance Tips
+
+1. **Use Hermes** - Smaller bundles, faster startup
+2. **Lazy load features** - Use dynamic imports for non-critical code
+3. **Optimize assets** - Compress images, use vector graphics where possible
+4. **Profile bundle size** - Use Metro's bundle visualizer
+5. **Test on device** - Simulator performance doesn't reflect real-world usage
+
+## Next Steps
+
+- Set up [CocoaPods for React Native targets](/advanced/cocoapods)
+- Learn about [shared files between targets](/advanced/shared-files)
+- Configure [custom frameworks](/advanced/custom-frameworks)
+- Read the [App Clips guide](/guides/app-clips) for complete setup

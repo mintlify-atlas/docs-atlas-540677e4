@@ -1,0 +1,390 @@
+---
+title: Network extensions
+description: VPN, packet tunnel, DNS proxy, and content filtering extensions
+---
+
+Network extensions provide VPN, content filtering, DNS proxy, and app proxy capabilities to your app.
+
+## Network extension types
+
+Expo Apple Targets supports all four network extension types:
+
+<CardGroup cols={2}>
+  <Card title="Packet Tunnel" icon="tunnel">
+    VPN and custom network protocols
+  </Card>
+  <Card title="App Proxy" icon="filter">
+    Per-app VPN and network filtering
+  </Card>
+  <Card title="DNS Proxy" icon="dns">
+    Custom DNS resolution
+  </Card>
+  <Card title="Filter Data" icon="shield-halved">
+    Content filtering and parental controls
+  </Card>
+</CardGroup>
+
+<Warning>
+  Network extensions require the Network Extensions entitlement from Apple. You must request this capability from Apple Developer Support before using these extension types.
+</Warning>
+
+## Packet Tunnel Provider
+
+Creates VPN tunnels and custom network protocols.
+
+### Extension point
+
+| Property | Value |
+| --- | --- |
+| **Type** | `network-packet-tunnel` |
+| **Extension Point** | `com.apple.networkextension.packet-tunnel` |
+| **Frameworks** | `NetworkExtension` |
+| **Embedded Swift** | Yes |
+
+### Creating a packet tunnel extension
+
+```bash
+npx create-target network-packet-tunnel
+```
+
+### Implementation
+
+```swift
+import NetworkExtension
+import os
+
+class PacketTunnelProvider: NEPacketTunnelProvider {
+    
+    override func startTunnel(options: [String : NSObject]?, completionHandler: @escaping (Error?) -> Void) {
+        // Configure tunnel settings
+        let tunnelNetworkSettings = NEPacketTunnelNetworkSettings(tunnelRemoteAddress: "10.0.0.1")
+        
+        // Set IPv4 settings
+        let ipv4Settings = NEIPv4Settings(
+            addresses: ["10.0.0.2"],
+            subnetMasks: ["255.255.255.0"]
+        )
+        ipv4Settings.includedRoutes = [NEIPv4Route.default()]
+        tunnelNetworkSettings.ipv4Settings = ipv4Settings
+        
+        // Set DNS settings
+        let dnsSettings = NEDNSSettings(servers: ["8.8.8.8", "8.8.4.4"])
+        tunnelNetworkSettings.dnsSettings = dnsSettings
+        
+        // Apply settings
+        setTunnelNetworkSettings(tunnelNetworkSettings) { error in
+            if let error = error {
+                completionHandler(error)
+                return
+            }
+            
+            // Start reading packets
+            self.startReadingPackets()
+            completionHandler(nil)
+        }
+    }
+    
+    override func stopTunnel(with reason: NEProviderStopReason, completionHandler: @escaping () -> Void) {
+        // Clean up tunnel
+        completionHandler()
+    }
+    
+    private func startReadingPackets() {
+        packetFlow.readPackets { packets, protocols in
+            // Process incoming packets
+            for (index, packet) in packets.enumerated() {
+                let protocolNumber = protocols[index]
+                // Handle packet based on protocol (IPv4, IPv6, etc.)
+                self.handlePacket(packet, protocol: protocolNumber)
+            }
+            
+            // Continue reading
+            self.startReadingPackets()
+        }
+    }
+    
+    private func handlePacket(_ packet: Data, protocol protocolNumber: NSNumber) {
+        // Process and forward packet
+        // Send outgoing packets with:
+        // packetFlow.writePackets([packet], withProtocols: [protocolNumber])
+    }
+}
+```
+
+### Starting the VPN
+
+From your React Native app (requires native module):
+
+```swift
+import NetworkExtension
+
+func startVPN() {
+    let manager = NETunnelProviderManager()
+    
+    manager.loadFromPreferences { error in
+        if error != nil {
+            // Create new configuration
+            let proto = NETunnelProviderProtocol()
+            proto.providerBundleIdentifier = "com.myapp.network-packet-tunnel"
+            proto.serverAddress = "VPN Server"
+            
+            manager.protocolConfiguration = proto
+            manager.localizedDescription = "My VPN"
+            manager.isEnabled = true
+            
+            manager.saveToPreferences { error in
+                if error == nil {
+                    try? manager.connection.startVPNTunnel()
+                }
+            }
+        } else {
+            // Start existing VPN
+            try? manager.connection.startVPNTunnel()
+        }
+    }
+}
+```
+
+## App Proxy Provider
+
+App-level VPN that only affects specific apps.
+
+### Extension point
+
+| Property | Value |
+| --- | --- |
+| **Type** | `network-app-proxy` |
+| **Extension Point** | `com.apple.networkextension.app-proxy` |
+| **Frameworks** | `NetworkExtension` |
+| **Embedded Swift** | Yes |
+
+```bash
+npx create-target network-app-proxy
+```
+
+Implementation is similar to packet tunnel but uses `NEAppProxyProvider` base class.
+
+## DNS Proxy Provider
+
+Custom DNS resolution for all network traffic.
+
+### Extension point
+
+| Property | Value |
+| --- | --- |
+| **Type** | `network-dns-proxy` |
+| **Extension Point** | `com.apple.networkextension.dns-proxy` |
+| **Frameworks** | `NetworkExtension` |
+| **Embedded Swift** | Yes |
+
+```bash
+npx create-target network-dns-proxy
+```
+
+### Implementation
+
+```swift
+import NetworkExtension
+
+class DNSProxyProvider: NEDNSProxyProvider {
+    
+    override func startProxy(options: [String : Any]?, completionHandler: @escaping (Error?) -> Void) {
+        // Configure DNS proxy
+        let settings = NEDNSProxyProviderSettings()
+        settings.dnsServers = ["8.8.8.8", "1.1.1.1"]
+        
+        setProxyConfiguration(settings) { error in
+            completionHandler(error)
+        }
+    }
+    
+    override func stopProxy(with reason: NEProviderStopReason, completionHandler: @escaping () -> Void) {
+        completionHandler()
+    }
+    
+    override func handleNewFlow(_ flow: NEAppProxyFlow) -> Bool {
+        if let udpFlow = flow as? NEAppProxyUDPFlow {
+            // Handle DNS query
+            handleDNSQuery(udpFlow)
+            return true
+        }
+        return false
+    }
+    
+    private func handleDNSQuery(_ flow: NEAppProxyUDPFlow) {
+        flow.readDatagrams { datagrams, endpoints, error in
+            guard let query = datagrams?.first else { return }
+            
+            // Parse DNS query
+            // Resolve query (custom logic or forward to upstream DNS)
+            // Write response
+            let response = self.resolveDNS(query)
+            flow.writeDatagrams([response], sentBy: endpoints ?? []) { error in
+                // Continue reading
+                self.handleDNSQuery(flow)
+            }
+        }
+    }
+    
+    private func resolveDNS(_ query: Data) -> Data {
+        // Implement DNS resolution logic
+        return query // Placeholder
+    }
+}
+```
+
+## Filter Data Provider
+
+Content filtering and parental controls.
+
+### Extension point
+
+| Property | Value |
+| --- | --- |
+| **Type** | `network-filter-data` |
+| **Extension Point** | `com.apple.networkextension.filter-data` |
+| **Frameworks** | `NetworkExtension` |
+| **Embedded Swift** | Yes |
+
+```bash
+npx create-target network-filter-data
+```
+
+### Implementation
+
+```swift
+import NetworkExtension
+
+class FilterDataProvider: NEFilterDataProvider {
+    
+    override func startFilter(completionHandler: @escaping (Error?) -> Void) {
+        // Initialize filter
+        completionHandler(nil)
+    }
+    
+    override func stopFilter(with reason: NEProviderStopReason, completionHandler: @escaping () -> Void) {
+        completionHandler()
+    }
+    
+    override func handleNewFlow(_ flow: NEFilterFlow) -> NEFilterNewFlowVerdict {
+        guard let socketFlow = flow as? NEFilterSocketFlow else {
+            return .allow()
+        }
+        
+        // Check if URL should be blocked
+        if let url = socketFlow.url?.absoluteString {
+            if shouldBlock(url) {
+                return .drop()
+            }
+        }
+        
+        // Allow and monitor data
+        return .filterDataVerdict(
+            withFilterInbound: true,
+            peekInboundBytes: 1024,
+            filterOutbound: true,
+            peekOutboundBytes: 1024
+        )
+    }
+    
+    override func handleInboundData(from flow: NEFilterFlow, readBytesStartOffset offset: Int, readBytes: Data) -> NEFilterDataVerdict {
+        // Inspect inbound data
+        if containsBlockedContent(readBytes) {
+            return .drop()
+        }
+        return .allow()
+    }
+    
+    override func handleOutboundData(from flow: NEFilterFlow, readBytesStartOffset offset: Int, readBytes: Data) -> NEFilterDataVerdict {
+        // Inspect outbound data
+        return .allow()
+    }
+    
+    private func shouldBlock(_ url: String) -> Bool {
+        // Implement blocking logic
+        let blocklist = ["example.com", "blocked.com"]
+        return blocklist.contains(where: { url.contains($0) })
+    }
+    
+    private func containsBlockedContent(_ data: Data) -> Bool {
+        // Check for blocked keywords or patterns
+        return false
+    }
+}
+```
+
+## Required entitlements
+
+All network extensions require special entitlements:
+
+```xml
+<key>com.apple.developer.networking.networkextension</key>
+<array>
+  <string>packet-tunnel-provider</string>
+  <!-- or app-proxy, dns-proxy, content-filter-provider -->
+</array>
+```
+
+<Warning>
+  You must request the Network Extensions capability from Apple Developer Support. This is not automatically granted.
+</Warning>
+
+## Testing network extensions
+
+<Steps>
+  <Step title="Build the extension">
+    Build your network extension target in Xcode.
+  </Step>
+
+  <Step title="Install on device">
+    Network extensions must be tested on a real device - they don't work in the simulator.
+  </Step>
+
+  <Step title="Trust the VPN configuration">
+    When starting the VPN for the first time, you'll need to allow the VPN configuration in Settings.
+  </Step>
+
+  <Step title="Monitor system logs">
+    Use Console.app to view network extension logs.
+  </Step>
+</Steps>
+
+## Best practices
+
+<Accordion title="Handle errors gracefully">
+  - Always call completion handlers
+  - Log errors for debugging
+  - Implement proper error recovery
+  - Test network failure scenarios
+</Accordion>
+
+<Accordion title="Optimize performance">
+  - Minimize packet processing overhead
+  - Use efficient data structures
+  - Avoid blocking operations
+  - Monitor memory usage
+</Accordion>
+
+<Accordion title="Security considerations">
+  - Validate all external data
+  - Use secure connections for VPN servers
+  - Implement proper authentication
+  - Don't log sensitive information
+</Accordion>
+
+## Learn more
+
+<CardGroup cols={2}>
+  <Card title="Entitlements" icon="key" href="/concepts/entitlements">
+    Configure network entitlements
+  </Card>
+  <Card title="Target config" icon="gear" href="/concepts/target-config">
+    Configure network extensions
+  </Card>
+  <Card title="Complete target list" icon="list" href="/targets/complete-list">
+    All extension types
+  </Card>
+  <Card title="Apple documentation" icon="apple" href="https://developer.apple.com/documentation/networkextension">
+    Official NetworkExtension documentation
+  </Card>
+</CardGroup>

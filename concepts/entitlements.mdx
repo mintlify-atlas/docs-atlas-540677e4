@@ -1,0 +1,488 @@
+---
+title: Entitlements
+description: Understanding entitlements, app groups, and permission configuration for Apple Targets
+---
+
+## What Are Entitlements?
+
+Entitlements are key-value pairs that grant your app permission to use specific Apple technologies and services. Each target (main app, widget, App Clip, etc.) can have its own entitlements file.
+
+```xml
+<!-- Example: widget/generated.entitlements -->
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>com.apple.security.application-groups</key>
+    <array>
+        <string>group.com.example.app</string>
+    </array>
+</dict>
+</plist>
+```
+
+## Configuring Entitlements
+
+### Via Configuration (Recommended)
+
+Define entitlements in your `expo-target.config.js`:
+
+```javascript
+/** @type {import('@bacons/apple-targets/app.plugin').Config} */
+module.exports = {
+  type: "widget",
+  entitlements: {
+    "com.apple.security.application-groups": ["group.com.example.app"],
+    "com.apple.developer.healthkit": true,
+    "com.apple.developer.healthkit.access": ["health-records"],
+  },
+};
+```
+
+This generates a `generated.entitlements` file automatically.
+
+<Note>
+The `generated.entitlements` file is managed by the plugin. Don't edit it directly—update the config instead.
+</Note>
+
+### Via Manual File
+
+Place a `*.entitlements` file in your target directory:
+
+```
+targets/widget/
+├── expo-target.config.js
+├── Widget.swift
+└── widget.entitlements        ← Manual entitlements file
+```
+
+The plugin will automatically link it when you run prebuild.
+
+<Warning>
+Only **one** entitlements file is supported per target. If you have both config entitlements and a manual file, the config takes precedence.
+</Warning>
+
+## Entitlements Schema
+
+The plugin provides full TypeScript types for all Apple entitlements:
+
+```typescript
+type Entitlements = Partial<{
+  // App Groups - Share data between targets
+  "com.apple.security.application-groups": string[];
+  
+  // HealthKit
+  "com.apple.developer.healthkit": boolean;
+  "com.apple.developer.healthkit.access": string[];
+  
+  // Associated Domains
+  "com.apple.developer.associated-domains": string[];
+  
+  // Apple Pay
+  "com.apple.developer.in-app-payments": string[];
+  
+  // iCloud
+  "com.apple.developer.icloud-container-identifiers": string[];
+  
+  // Sign in with Apple
+  "com.apple.developer.applesignin": "Default"[];
+  
+  // Push Notifications
+  "com.apple.developer.push-to-talk": boolean;
+  
+  // Network Extensions
+  "com.apple.developer.networking.networkextension": (
+    | "dns-proxy"
+    | "packet-tunnel-provider"
+    | "app-proxy-provider"
+    | "content-filter-provider"
+  )[];
+  
+  // And 50+ more...
+}>;
+```
+
+See `config.ts:10-84` for the complete schema.
+
+## App Groups
+
+App Groups enable data sharing between your main app and extensions (widgets, App Clips, share extensions, etc.).
+
+### Why App Groups?
+
+Extensions run in separate processes with their own sandboxes. Without App Groups, they cannot share:
+- UserDefaults data
+- Files in containers
+- Keychain items
+- Core Data databases
+
+### Automatic App Groups
+
+Certain target types **automatically sync** app groups from the main app:
+
+```typescript
+// From target.ts:291-300
+export const SHOULD_USE_APP_GROUPS_BY_DEFAULT: Record<ExtensionType, boolean> = {
+  widget: true,               // ✅ Auto-syncs
+  clip: true,                 // ✅ Auto-syncs
+  share: true,                // ✅ Auto-syncs
+  "bg-download": true,        // ✅ Auto-syncs
+  keyboard: true,             // ✅ Auto-syncs
+  "file-provider": true,      // ✅ Auto-syncs
+  "watch-widget": true,       // ✅ Auto-syncs
+  intent: false,              // ❌ No auto-sync
+  // ...
+};
+```
+
+<Info>
+If your main app defines app groups and your target type auto-syncs, the plugin copies them automatically.
+</Info>
+
+From `with-widget.ts:166-210`:
+
+```typescript
+if (
+  !hasDefinedAppGroupsManually &&
+  SHOULD_USE_APP_GROUPS_BY_DEFAULT[props.type]
+) {
+  const mainAppGroups = config.ios?.entitlements?.[APP_GROUP_KEY];
+  
+  if (Array.isArray(mainAppGroups) && mainAppGroups.length > 0) {
+    entitlements[APP_GROUP_KEY] = mainAppGroups;
+  }
+}
+```
+
+### Manual App Groups
+
+Override auto-synced app groups or define for non-auto-syncing targets:
+
+```javascript
+// app.json
+{
+  "expo": {
+    "ios": {
+      "entitlements": {
+        "com.apple.security.application-groups": [
+          "group.com.example.app"
+        ]
+      }
+    }
+  }
+}
+```
+
+```javascript
+// targets/widget/expo-target.config.js
+module.exports = (config) => ({
+  type: "widget",
+  entitlements: {
+    // Explicitly set (overrides auto-sync)
+    "com.apple.security.application-groups": [
+      "group.com.example.app",
+      "group.com.example.widget-specific",
+    ],
+  },
+});
+```
+
+### App Group Naming
+
+App Groups must:
+- Start with `group.`
+- Use reverse-domain notation
+- Be unique across the App Store
+
+Recommended patterns:
+
+```javascript
+// Main app bundle ID: com.example.app
+
+// Pattern 1: Use main bundle ID
+"group.com.example.app"
+
+// Pattern 2: Add descriptive suffix
+"group.com.example.app.shared"
+
+// Pattern 3: Use company domain
+"group.com.example.company"
+```
+
+## App Clip Entitlements
+
+App Clips have **automatic entitlement behavior**:
+
+### 1. Parent Application Identifiers
+
+Automatically set to link the App Clip to the main app:
+
+```javascript
+module.exports = {
+  type: "clip",
+  // Plugin automatically adds:
+  // "com.apple.developer.parent-application-identifiers": [
+  //   "$(AppIdentifierPrefix)com.example.app"
+  // ]
+};
+```
+
+From `with-widget.ts:86-88`:
+
+```typescript
+if (props.type === "clip") {
+  entitlements["com.apple.developer.parent-application-identifiers"] = [
+    `$(AppIdentifierPrefix)${config.ios!.bundleIdentifier!}`,
+  ];
+}
+```
+
+### 2. Associated Domains
+
+If not explicitly defined, the plugin attempts to infer from the main app:
+
+```javascript
+// app.json
+{
+  "expo": {
+    "ios": {
+      "associatedDomains": [
+        "applinks:example.com",
+        "webcredentials:example.com"
+      ]
+    }
+  }
+}
+```
+
+The plugin converts to App Clip format:
+
+```javascript
+// Auto-generated for App Clip:
+{
+  "com.apple.developer.associated-domains": [
+    "appclips:example.com"
+  ]
+}
+```
+
+From `with-widget.ts:119-159`:
+
+```typescript
+const sanitizedUrls = associatedDomains
+  .map((url) => {
+    return url
+      .replace(/^(appclips|applinks|webcredentials).*:/, "")
+      .replace(/\/$/, "")
+      .replace(/^https?:\/\//, "");
+  })
+  .filter(Boolean);
+
+entitlements[associatedDomainsKey] = unique.map(
+  (url) => `appclips:${url}`,
+);
+```
+
+<Warning>
+App Clips require associated domains to launch from websites. Always define `com.apple.developer.associated-domains` with the `appclips:` prefix.
+</Warning>
+
+## Widget Entitlements
+
+Widgets commonly use:
+
+### App Groups (Required for Data Sharing)
+
+```javascript
+module.exports = {
+  type: "widget",
+  entitlements: {
+    "com.apple.security.application-groups": ["group.com.example.app"],
+  },
+};
+```
+
+Access shared data in Swift:
+
+```swift
+let defaults = UserDefaults(suiteName: "group.com.example.app")
+let value = defaults?.string(forKey: "myKey")
+```
+
+### Siri (Optional for App Intents)
+
+```javascript
+entitlements: {
+  "com.apple.developer.siri": true,
+}
+```
+
+## Share Extension Entitlements
+
+Share extensions need app groups to send data back to the main app:
+
+```javascript
+module.exports = {
+  type: "share",
+  entitlements: {
+    "com.apple.security.application-groups": ["group.com.example.app"],
+  },
+};
+```
+
+## Common Entitlements
+
+### Associated Domains
+
+For universal links, App Clips, and web credentials:
+
+```javascript
+entitlements: {
+  "com.apple.developer.associated-domains": [
+    "applinks:example.com",
+    "appclips:example.com",
+    "webcredentials:example.com",
+  ],
+}
+```
+
+### HealthKit
+
+```javascript
+entitlements: {
+  "com.apple.developer.healthkit": true,
+  "com.apple.developer.healthkit.access": ["health-records"],
+}
+```
+
+### HomeKit
+
+```javascript
+entitlements: {
+  "com.apple.developer.homekit": true,
+}
+```
+
+### iCloud
+
+```javascript
+entitlements: {
+  "com.apple.developer.icloud-container-identifiers": [
+    "iCloud.com.example.app",
+  ],
+}
+```
+
+### Apple Pay
+
+```javascript
+entitlements: {
+  "com.apple.developer.in-app-payments": [
+    "merchant.com.example.app",
+  ],
+}
+```
+
+### Sign in with Apple
+
+```javascript
+entitlements: {
+  "com.apple.developer.applesignin": ["Default"],
+}
+```
+
+### Network Extensions
+
+```javascript
+entitlements: {
+  "com.apple.developer.networking.networkextension": [
+    "packet-tunnel-provider",
+    "dns-proxy",
+  ],
+}
+```
+
+## Dynamic Configuration
+
+Use functions to share entitlements between targets:
+
+```javascript
+// targets/widget/expo-target.config.js
+module.exports = (config) => {
+  const APP_GROUP = `group.${config.ios.bundleIdentifier}`;
+  
+  return {
+    type: "widget",
+    entitlements: {
+      "com.apple.security.application-groups": [APP_GROUP],
+    },
+  };
+};
+```
+
+```javascript
+// targets/share/expo-target.config.js
+module.exports = (config) => {
+  // Reuse same app group
+  const APP_GROUP = `group.${config.ios.bundleIdentifier}`;
+  
+  return {
+    type: "share",
+    entitlements: {
+      "com.apple.security.application-groups": [APP_GROUP],
+    },
+  };
+};
+```
+
+## Debugging Entitlements
+
+### View Generated Entitlements
+
+After prebuild, check:
+
+```bash
+cat ios/YourApp.xcodeproj/project.pbxproj | grep CODE_SIGN_ENTITLEMENTS
+```
+
+Or open Xcode:
+1. Select target
+2. **Signing & Capabilities** tab
+3. View capabilities and entitlements
+
+### Common Issues
+
+<Accordion title="App Groups not syncing between targets">
+  **Solution:**
+  - Ensure main app defines app groups in `app.json`
+  - Check target type has `appGroupsByDefault: true`
+  - Override explicitly if needed in target config
+  - Re-run `npx expo prebuild --clean`
+</Accordion>
+
+<Accordion title="Provisioning profile errors">
+  **Solution:**
+  - Open Xcode Signing tab to regenerate profiles
+  - Ensure App Group ID is registered in Apple Developer portal
+  - Check all entitlements are enabled for your app ID
+  - Use Automatic signing initially
+</Accordion>
+
+<Accordion title="App Clip won't launch from website">
+  **Solution:**
+  - Verify `com.apple.developer.associated-domains` includes `appclips:` prefix
+  - Check AASA file is published at `/.well-known/apple-app-site-association`
+  - Ensure App Clip Experience is configured in App Store Connect
+  - Test with QR code or direct URL first
+</Accordion>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Code Signing" icon="signature" href="/concepts/code-signing">
+    Configure provisioning profiles and certificates
+  </Card>
+  <Card title="Data Sharing" icon="database" href="/guides/sharing-data">
+    Use app groups to share data between targets
+  </Card>
+</CardGroup>

@@ -1,0 +1,401 @@
+---
+title: 'ExtensionStorage'
+description: 'Native module API for sharing data between your app and extensions'
+---
+
+The `ExtensionStorage` class provides a JavaScript API for storing and retrieving data in App Groups, enabling communication between your main app and extensions (widgets, app clips, share extensions, etc.).
+
+## Overview
+
+`ExtensionStorage` wraps iOS's `UserDefaults` with app group support, making it easy to share data between your React Native app and native extensions. It's commonly used to pass data to widgets or receive data from share extensions.
+
+## Installation
+
+```bash
+npm install @bacons/apple-targets
+```
+
+The native module is automatically linked when you run `expo prebuild`.
+
+## Basic Usage
+
+```typescript
+import { ExtensionStorage } from '@bacons/apple-targets';
+
+// Create an instance with your app group identifier
+const storage = new ExtensionStorage('group.com.company.app');
+
+// Store data
+storage.set('widgetData', { count: 42, message: 'Hello' });
+
+// Retrieve data
+const data = storage.get('widgetData');
+
+// Reload widgets after updating data
+ExtensionStorage.reloadWidget();
+```
+
+## Constructor
+
+<ParamField path="appGroup" type="string" required>
+  The app group identifier used for sharing data.
+
+  **Example:**
+  ```typescript
+  const storage = new ExtensionStorage('group.com.company.app');
+  ```
+
+  **Important:** The app group must be configured in your target's entitlements:
+  ```js
+  // expo-target.config.js
+  entitlements: {
+    "com.apple.security.application-groups": ["group.com.company.app"]
+  }
+  ```
+</ParamField>
+
+## Instance Methods
+
+### set()
+
+Stores a value in the app group storage.
+
+```typescript
+set(key: string, value?: string | number | Record<string, string | number> | Array<Record<string, string | number>>): void
+```
+
+<ParamField path="key" type="string" required>
+  The key to store the value under.
+</ParamField>
+
+<ParamField path="value" type="string | number | object | array | null">
+  The value to store. Pass `null` or `undefined` to remove the key.
+
+  Supported types:
+  - `string`: Stored as a string
+  - `number`: Stored as an integer
+  - `object`: Stored as a dictionary (string/number values only)
+  - `array`: Stored as an array of dictionaries
+  - `null` / `undefined`: Removes the key
+</ParamField>
+
+**Examples:**
+
+<Tabs>
+  <Tab title="String">
+    ```typescript
+    storage.set('message', 'Hello Widget');
+    ```
+  </Tab>
+  <Tab title="Number">
+    ```typescript
+    storage.set('count', 42);
+    ```
+  </Tab>
+  <Tab title="Object">
+    ```typescript
+    storage.set('widgetData', {
+      title: 'My Title',
+      count: 10,
+      updated: Date.now()
+    });
+    ```
+  </Tab>
+  <Tab title="Array">
+    ```typescript
+    storage.set('items', [
+      { name: 'Item 1', value: 100 },
+      { name: 'Item 2', value: 200 }
+    ]);
+    ```
+  </Tab>
+  <Tab title="Remove">
+    ```typescript
+    // Remove a key
+    storage.set('count', null);
+    // or
+    storage.set('count', undefined);
+    ```
+  </Tab>
+</Tabs>
+
+### get()
+
+Retrieves a value from the app group storage.
+
+```typescript
+get(key: string): string | null
+```
+
+<ParamField path="key" type="string" required>
+  The key to retrieve.
+</ParamField>
+
+<ResponseField name="return" type="string | null">
+  The stored value as a string, or `null` if the key doesn't exist.
+
+  **Note:** All values are returned as strings. For objects and arrays, you'll need to parse them:
+  ```typescript
+  const dataStr = storage.get('widgetData');
+  const data = dataStr ? JSON.parse(dataStr) : null;
+  ```
+</ResponseField>
+
+**Example:**
+
+```typescript
+const message = storage.get('message');
+console.log(message); // "Hello Widget"
+
+const dataStr = storage.get('widgetData');
+if (dataStr) {
+  const data = JSON.parse(dataStr);
+  console.log(data.title); // "My Title"
+}
+```
+
+### remove()
+
+Removes a key from the app group storage.
+
+```typescript
+remove(key: string): void
+```
+
+<ParamField path="key" type="string" required>
+  The key to remove.
+</ParamField>
+
+**Example:**
+
+```typescript
+storage.remove('widgetData');
+```
+
+**Note:** This is equivalent to calling `storage.set(key, null)`.
+
+## Static Methods
+
+### reloadWidget()
+
+Reloads all widgets or a specific widget kind.
+
+```typescript
+static reloadWidget(name?: string): void
+```
+
+<ParamField path="name" type="string">
+  Optional widget kind to reload. If omitted, reloads all widgets.
+</ParamField>
+
+**Examples:**
+
+```typescript
+// Reload all widgets
+ExtensionStorage.reloadWidget();
+
+// Reload a specific widget kind
+ExtensionStorage.reloadWidget('MyWidget');
+```
+
+**Important:** Call this after updating data that your widgets depend on. This triggers iOS to refresh the widget's timeline.
+
+### reloadControls()
+
+Reloads all control widgets or a specific control widget kind.
+
+```typescript
+static reloadControls(name?: string): void
+```
+
+<ParamField path="name" type="string">
+  Optional control widget kind to reload. If omitted, reloads all control widgets.
+</ParamField>
+
+**Examples:**
+
+```typescript
+// Reload all control widgets
+ExtensionStorage.reloadControls();
+
+// Reload a specific control widget kind
+ExtensionStorage.reloadControls('MyControl');
+```
+
+**Note:** Control widgets are a special type of widget introduced in iOS 18 for Lock Screen and Control Center.
+
+## Complete Example
+
+Here's a complete example showing how to use `ExtensionStorage` to share data with a widget:
+
+<Tabs>
+  <Tab title="React Native">
+    ```typescript
+    import { ExtensionStorage } from '@bacons/apple-targets';
+    import { useEffect, useState } from 'react';
+    import { Button, Text, View } from 'react-native';
+
+    const storage = new ExtensionStorage('group.com.company.app');
+
+    export default function App() {
+      const [count, setCount] = useState(0);
+
+      const updateWidget = () => {
+        const newCount = count + 1;
+        setCount(newCount);
+
+        // Store data for the widget
+        storage.set('widgetData', {
+          count: newCount,
+          updated: new Date().toISOString()
+        });
+
+        // Reload the widget to show new data
+        ExtensionStorage.reloadWidget('MyWidget');
+      };
+
+      return (
+        <View>
+          <Text>Count: {count}</Text>
+          <Button title="Update Widget" onPress={updateWidget} />
+        </View>
+      );
+    }
+    ```
+  </Tab>
+  <Tab title="Swift Widget">
+    ```swift
+    import WidgetKit
+    import SwiftUI
+
+    struct WidgetEntry: TimelineEntry {
+        let date: Date
+        let count: Int
+    }
+
+    struct Provider: TimelineProvider {
+        func getTimeline(in context: Context, completion: @escaping (Timeline<Entry>) -> ()) {
+            // Read from App Group
+            let defaults = UserDefaults(suiteName: "group.com.company.app")
+            let count = defaults?.integer(forKey: "widgetData.count") ?? 0
+
+            let entry = WidgetEntry(date: Date(), count: count)
+            let timeline = Timeline(entries: [entry], policy: .never)
+            completion(timeline)
+        }
+    }
+
+    struct MyWidgetView: View {
+        var entry: Provider.Entry
+
+        var body: some View {
+            Text("Count: \(entry.count)")
+        }
+    }
+    ```
+  </Tab>
+</Tabs>
+
+## App Groups Setup
+
+To use `ExtensionStorage`, you need to configure app groups in both your main app and extension targets.
+
+### Main App
+
+Add app groups to your `app.json`:
+
+```json
+{
+  "expo": {
+    "ios": {
+      "entitlements": {
+        "com.apple.security.application-groups": ["group.com.company.app"]
+      }
+    }
+  }
+}
+```
+
+### Extension Target
+
+Add app groups to your target's `expo-target.config.js`:
+
+```js
+module.exports = {
+  type: "widget",
+  entitlements: {
+    "com.apple.security.application-groups": ["group.com.company.app"]
+  }
+};
+```
+
+**Important:** Both targets must use the exact same app group identifier.
+
+## Best Practices
+
+### Use Consistent Keys
+
+Define your keys as constants to avoid typos:
+
+```typescript
+const STORAGE_KEYS = {
+  WIDGET_DATA: 'widgetData',
+  USER_SETTINGS: 'userSettings',
+} as const;
+
+storage.set(STORAGE_KEYS.WIDGET_DATA, data);
+```
+
+### Always Reload After Updates
+
+Remember to reload widgets after updating their data:
+
+```typescript
+storage.set('widgetData', newData);
+ExtensionStorage.reloadWidget(); // Don't forget this!
+```
+
+### Handle Missing Data
+
+Always check if data exists before parsing:
+
+```typescript
+const dataStr = storage.get('widgetData');
+if (dataStr) {
+  try {
+    const data = JSON.parse(dataStr);
+    // Use data
+  } catch (error) {
+    console.error('Failed to parse widget data:', error);
+  }
+}
+```
+
+### Keep Data Small
+
+App Group storage is limited. Keep stored data small and only include what's necessary for your extensions.
+
+## TypeScript Types
+
+```typescript
+class ExtensionStorage {
+  constructor(appGroup: string);
+  
+  set(
+    key: string,
+    value?:
+      | string
+      | number
+      | Record<string, string | number>
+      | Array<Record<string, string | number>>
+  ): void;
+  
+  get(key: string): string | null;
+  
+  remove(key: string): void;
+  
+  static reloadWidget(name?: string): void;
+  
+  static reloadControls(name?: string): void;
+}
+```

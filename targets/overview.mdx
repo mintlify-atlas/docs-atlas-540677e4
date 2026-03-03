@@ -1,0 +1,150 @@
+---
+title: Targets overview
+description: Understanding Apple target types and the extension ecosystem
+---
+
+Expo Apple Targets supports 40+ native Apple extension types, enabling you to extend your app's functionality beyond the main application. Each target type serves a specific purpose in the Apple ecosystem.
+
+## What are Apple targets?
+
+Apple targets are separate executables that extend your app's functionality in specific contexts:
+
+- **Widgets** appear on the home screen and lock screen
+- **App Clips** are lightweight versions of your app that launch instantly
+- **Extensions** integrate with system features like Share Sheet, Safari, Photos, etc.
+- **Watch Apps** run on Apple Watch as companion experiences
+- **Network Extensions** provide VPN, content filtering, and DNS proxy capabilities
+
+Each target runs in its own process with specific entitlements and capabilities.
+
+## Target categories
+
+<CardGroup cols={2}>
+  <Card title="Widgets" icon="grid-2" href="/targets/widgets">
+    Home screen widgets, Live Activities, and watch complications
+  </Card>
+  <Card title="App Clips" icon="bolt" href="/targets/app-clips">
+    Instant app experiences without full installation
+  </Card>
+  <Card title="Extensions" icon="puzzle-piece" href="/targets/extensions">
+    Share, Photos, Safari, and system integrations
+  </Card>
+  <Card title="Watch Apps" icon="watch" href="/targets/watch-apps">
+    Companion apps and complications for Apple Watch
+  </Card>
+  <Card title="Notifications" icon="bell" href="/targets/notifications">
+    Rich notification content and media attachments
+  </Card>
+  <Card title="Safari" icon="compass" href="/targets/safari">
+    Web extensions and content blockers
+  </Card>
+  <Card title="Network" icon="network-wired" href="/targets/network">
+    VPN, DNS proxy, and content filtering
+  </Card>
+  <Card title="Complete List" icon="list" href="/targets/complete-list">
+    All 40+ supported target types
+  </Card>
+</CardGroup>
+
+## How targets work
+
+Each target is defined by:
+
+1. **Extension point identifier** - Apple's unique identifier for the extension type (e.g., `com.apple.widgetkit-extension`)
+2. **Product type** - The Xcode product type that determines build settings
+3. **Frameworks** - System frameworks the target links against
+4. **Entitlements** - Special permissions and capabilities
+
+## Target architecture
+
+Targets in Expo Apple Targets use **Continuous Native Generation** (CNG):
+
+```
+project/
+├── targets/              # Your target source code (outside /ios)
+│   ├── my-widget/
+│   │   ├── expo-target.config.js
+│   │   ├── Widget.swift
+│   │   └── Assets.xcassets/
+│   └── my-clip/
+│       ├── expo-target.config.js
+│       └── AppDelegate.swift
+└── ios/                  # Generated Xcode project
+    └── MyApp.xcodeproj   # Links to targets/ via expo:targets
+```
+
+When you run `npx expo prebuild`, the plugin:
+
+1. Scans the `/targets` directory for `expo-target.config.js` files
+2. Creates native targets in the Xcode project
+3. Links your source files to the project via `expo:targets` virtual folder
+4. Configures build settings, frameworks, and entitlements
+5. Sets up code signing and provisioning
+
+<Note>
+  Your changes to files in the `expo:targets` folder in Xcode are saved to the `/targets` directory, not the generated `/ios` directory. This enables true Continuous Native Generation.
+</Note>
+
+## App Groups and data sharing
+
+Many target types support **App Groups** for sharing data between your main app and extensions:
+
+<Accordion title="Targets with automatic App Groups">
+  These target types automatically sync the `com.apple.security.application-groups` entitlement from your main app:
+
+  - **widget** - Home screen widgets
+  - **clip** - App Clips
+  - **share** - Share extensions
+  - **bg-download** - Background download extensions
+  - **watch-widget** - Watch complications
+  - **keyboard** - Custom keyboards
+  - **file-provider** - File provider extensions
+</Accordion>
+
+Use the `ExtensionStorage` API to share data via App Groups:
+
+```javascript
+import { ExtensionStorage } from "@bacons/apple-targets";
+
+const storage = new ExtensionStorage("group.com.myapp.data");
+storage.set("counter", 42);
+ExtensionStorage.reloadWidget();
+```
+
+## Product types
+
+Most extensions use the standard `com.apple.product-type.app-extension` product type, but some have special types:
+
+| Target Type | Product Type |
+| --- | --- |
+| **clip** | `com.apple.product-type.application.on-demand-install-capable` |
+| **watch** | `com.apple.product-type.application` |
+| **app-intent** | `com.apple.product-type.extensionkit-extension` |
+| All others | `com.apple.product-type.app-extension` |
+
+## Choosing a target type
+
+Consider these factors when selecting a target type:
+
+- **User context** - Where does the user interact with this feature? (home screen, share sheet, Safari, etc.)
+- **Data access** - Does it need to share data with your main app?
+- **Size constraints** - App Clips have a 50 MB size limit
+- **Capabilities** - What system frameworks and APIs do you need?
+- **Distribution** - Some targets require special provisioning or App Store review
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Create a target" icon="plus" href="/cli/create-target">
+    Use the CLI to scaffold a new target
+  </Card>
+  <Card title="Target configuration" icon="gear" href="/concepts/target-config">
+    Configure target settings and behavior
+  </Card>
+  <Card title="Complete target list" icon="list" href="/targets/complete-list">
+    Browse all 40+ supported target types
+  </Card>
+  <Card title="Example projects" icon="code" href="https://github.com/EvanBacon/expo-apple-targets/tree/main/apps">
+    Explore demo apps and examples
+  </Card>
+</CardGroup>

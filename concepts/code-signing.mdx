@@ -1,0 +1,445 @@
+---
+title: Code Signing
+description: Provisioning profiles, certificates, and automated code signing for Apple Targets with EAS Build
+---
+
+## Overview
+
+Code signing proves that your app and its extensions come from a trusted source (you) and haven't been tampered with. Every target in your app—main app, widgets, App Clips, extensions—requires its own code signature.
+
+## How Code Signing Works
+
+Each target needs:
+
+1. **Certificate** - Identifies you as the developer (shared across all targets)
+2. **Provisioning Profile** - Links your app ID, certificate, and device IDs
+3. **Entitlements** - Permissions the target needs
+
+```
+┌─────────────────┐
+│   Main App      │ → Certificate + Profile + Entitlements
+├─────────────────┤
+│   Widget        │ → Certificate + Profile + Entitlements
+├─────────────────┤
+│   App Clip      │ → Certificate + Profile + Entitlements
+├─────────────────┤
+│   Share Ext.    │ → Certificate + Profile + Entitlements
+└─────────────────┘
+```
+
+## Automatic Code Signing (Xcode)
+
+### First-Time Setup
+
+1. **Open Xcode:**
+   ```bash
+   xed ios
+   ```
+
+2. **Select each target** in the project navigator
+
+3. **Go to Signing & Capabilities tab**
+
+4. **Check "Automatically manage signing"**
+
+5. **Select your Team** from the dropdown
+
+<Info>
+Xcode will automatically create provisioning profiles and register App IDs for all targets.
+</Info>
+
+### Development Team ID
+
+Set your Apple Team ID in `app.json`:
+
+```json
+{
+  "expo": {
+    "ios": {
+      "appleTeamId": "TEAM123456",
+      "bundleIdentifier": "com.example.app"
+    }
+  }
+}
+```
+
+Find your Team ID:
+- In Xcode: **Signing & Capabilities** → Team dropdown shows ID in parentheses
+- Apple Developer Portal: **Membership** page → Team ID
+
+<Warning>
+If `appleTeamId` is missing, builds may fail with code signing errors. The plugin warns you but continues:
+
+```typescript
+// From config-plugin.ts:32-36
+if (!appleTeamId) {
+  warnOnce(
+    chalk`{yellow [bacons/apple-targets]} Expo config is missing required {cyan ios.appleTeamId} property. iOS builds may fail until this is corrected.`,
+  );
+}
+```
+</Warning>
+
+## EAS Build (Automatic)
+
+EAS Build handles code signing automatically for all targets.
+
+### How It Works
+
+1. **Syncs entitlements** - The plugin exports entitlements via `withEASTargets`:
+
+```typescript
+// From with-widget.ts:356-360
+config = withEASTargets(config, {
+  targetName: productName,
+  bundleIdentifier: bundleId,
+  entitlements: entitlementsJson,
+});
+```
+
+2. **Creates App IDs** - EAS registers all bundle identifiers
+3. **Generates profiles** - Creates provisioning profiles for each target
+4. **Downloads certificates** - Uses your distribution certificate
+5. **Signs all targets** - Applies signatures during build
+
+### EAS Setup
+
+```bash
+# Install EAS CLI
+npm install -g eas-cli
+
+# Login
+eas login
+
+# Configure project
+eas build:configure
+```
+
+Your `eas.json`:
+
+```json
+{
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "ios": {
+        "simulator": true
+      }
+    },
+    "preview": {
+      "distribution": "internal",
+      "ios": {
+        "simulator": false
+      }
+    },
+    "production": {
+      "ios": {
+        "buildConfiguration": "Release"
+      }
+    }
+  }
+}
+```
+
+### Running a Build
+
+```bash
+# Development build (for testing)
+eas build --platform ios --profile development
+
+# Production build (for App Store)
+eas build --platform ios --profile production
+```
+
+EAS automatically:
+- Detects all targets from your config
+- Creates provisioning profiles
+- Signs each target
+- Embeds targets in the app bundle
+
+<Note>
+The first build takes longer as EAS registers App IDs and creates profiles. Subsequent builds reuse credentials.
+</Note>
+
+## Manual Code Signing
+
+For custom CI/CD or advanced setups.
+
+### 1. Register App IDs
+
+For each target, register an App ID in [Apple Developer Portal](https://developer.apple.com/account/resources/identifiers/list):
+
+```
+Main App:  com.example.app
+Widget:    com.example.app.widget
+App Clip:  com.example.app.clip
+Share:     com.example.app.share
+```
+
+### 2. Configure Capabilities
+
+For each App ID, enable required capabilities:
+
+- **App Groups** - For data sharing
+- **Associated Domains** - For App Clips and universal links
+- **Push Notifications** - For remote notifications
+- **Sign in with Apple** - For authentication
+- Etc.
+
+### 3. Create Provisioning Profiles
+
+For each target:
+
+1. Go to [Provisioning Profiles](https://developer.apple.com/account/resources/profiles/list)
+2. Click **+** to create new profile
+3. Select profile type:
+   - **Development** - For local testing
+   - **Ad Hoc** - For TestFlight internal testing
+   - **App Store** - For App Store distribution
+4. Select the App ID
+5. Select your certificate
+6. Select devices (Development/Ad Hoc only)
+7. Download and install
+
+### 4. Install Profiles
+
+Double-click `.mobileprovision` files or:
+
+```bash
+cp *.mobileprovision ~/Library/MobileDevice/Provisioning\ Profiles/
+```
+
+### 5. Configure Xcode
+
+For each target:
+
+1. Select target in Xcode
+2. **Signing & Capabilities** tab
+3. Uncheck "Automatically manage signing"
+4. Select provisioning profile from dropdown
+
+## Build Settings
+
+The plugin automatically configures code signing build settings:
+
+```typescript
+// From with-xcode-changes.ts:113-127
+function applyDevelopmentTeamIdToTargets() {
+  const devTeamId =
+    props.teamId ||
+    project.rootObject.props.targets
+      .map((target) => target.getDefaultBuildSetting("DEVELOPMENT_TEAM"))
+      .find(Boolean);
+
+  project.rootObject.props.targets.forEach((target) => {
+    if (devTeamId) {
+      target.setBuildSetting("DEVELOPMENT_TEAM", devTeamId);
+    }
+  });
+}
+```
+
+Key build settings:
+
+- `DEVELOPMENT_TEAM` - Your Team ID
+- `CODE_SIGN_STYLE` - `Automatic` or `Manual`
+- `CODE_SIGN_ENTITLEMENTS` - Path to entitlements file
+- `PRODUCT_BUNDLE_IDENTIFIER` - Bundle ID
+- `PROVISIONING_PROFILE_SPECIFIER` - Profile name (manual signing)
+
+## App Clip Signing
+
+App Clips have **additional requirements**:
+
+### 1. Parent Application Identifier
+
+Automatically set by the plugin:
+
+```xml
+<key>com.apple.developer.parent-application-identifiers</key>
+<array>
+    <string>$(AppIdentifierPrefix)com.example.app</string>
+</array>
+```
+
+### 2. Associated Domains
+
+Required for launching from websites:
+
+```javascript
+// targets/clip/expo-target.config.js
+module.exports = {
+  type: "clip",
+  entitlements: {
+    "com.apple.developer.associated-domains": [
+      "appclips:example.com",
+    ],
+  },
+};
+```
+
+### 3. AASA File
+
+Publish an Apple App Site Association file at:
+
+```
+https://example.com/.well-known/apple-app-site-association
+```
+
+```json
+{
+  "appclips": {
+    "apps": ["TEAM123456.com.example.app.clip"]
+  }
+}
+```
+
+<Warning>
+App Clip code signing is not fully automated. You may need to manually configure profiles in Xcode on first build.
+</Warning>
+
+## Troubleshooting
+
+### Common Issues
+
+<Accordion title="Code signing error: No profile found">
+  **Solution:**
+  1. Open Xcode Signing tab
+  2. Enable "Automatically manage signing"
+  3. Select your Team
+  4. Xcode will create profiles
+  5. Re-run your build
+</Accordion>
+
+<Accordion title="Entitlements don't match provisioning profile">
+  **Solution:**
+  1. Check entitlements in `expo-target.config.js`
+  2. Verify capabilities are enabled for App ID in Developer Portal
+  3. Regenerate provisioning profile
+  4. Download and install new profile
+</Accordion>
+
+<Accordion title="App Groups not in provisioning profile">
+  **Solution:**
+  1. Go to App ID in Developer Portal
+  2. Enable "App Groups" capability
+  3. Configure App Group ID (matches entitlements)
+  4. Regenerate provisioning profile
+  5. Download and install
+</Accordion>
+
+<Accordion title="Multiple targets with same bundle ID">
+  **Solution:**
+  - Each target needs a unique bundle ID
+  - Use dot notation: `.widget`, `.clip`, `.share`
+  - Or specify absolute: `com.example.widget`
+  - Re-run `npx expo prebuild --clean`
+</Accordion>
+
+<Accordion title="EAS Build fails with provisioning error">
+  **Solution:**
+  1. Check `appleTeamId` in `app.json`
+  2. Verify bundle IDs are unique
+  3. Check entitlements are valid
+  4. Try deleting credentials: `eas credentials`
+  5. Run build again (will recreate credentials)
+</Accordion>
+
+### Debug Commands
+
+```bash
+# List provisioning profiles
+security find-identity -v -p codesigning
+
+# List installed profiles
+ls ~/Library/MobileDevice/Provisioning\ Profiles/
+
+# View profile details
+security cms -D -i profile.mobileprovision
+
+# Check code signature
+codesign -dv --verbose=4 YourApp.app
+
+# Verify embedded profiles
+codesign -d --entitlements - YourApp.app
+```
+
+## CI/CD Integration
+
+### GitHub Actions
+
+```yaml
+name: Build
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - uses: actions/setup-node@v3
+        with:
+          node-version: 18
+      
+      - name: Install dependencies
+        run: npm install
+      
+      - name: EAS Build
+        run: |
+          npm install -g eas-cli
+          eas build --platform ios --non-interactive --no-wait
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+```
+
+### Fastlane
+
+```ruby
+lane :build do
+  # Run prebuild
+  sh("npx expo prebuild -p ios --clean")
+  
+  # Match provisioning
+  match(
+    type: "appstore",
+    app_identifier: [
+      "com.example.app",
+      "com.example.app.widget",
+      "com.example.app.clip",
+    ]
+  )
+  
+  # Build
+  gym(
+    workspace: "ios/YourApp.xcworkspace",
+    scheme: "YourApp",
+    export_method: "app-store"
+  )
+end
+```
+
+## Best Practices
+
+1. **Use EAS Build** - Simplest and most reliable
+2. **Set `appleTeamId`** - Required for consistent builds
+3. **Enable automatic signing** - For local development
+4. **Use unique bundle IDs** - Never reuse across targets
+5. **Enable capabilities** - Match entitlements in Developer Portal
+6. **Test profiles** - Build locally before CI/CD
+7. **Document setup** - Team members need same Team ID access
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Development workflow" icon="code" href="/concepts/development-workflow">
+    Learn the development workflow
+  </Card>
+  <Card title="EAS Build" icon="cloud" href="https://docs.expo.dev/build/introduction/">
+    Learn more about EAS Build
+  </Card>
+</CardGroup>

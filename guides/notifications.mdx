@@ -1,0 +1,429 @@
+---
+title: Notification Extensions
+description: Customize notification appearance and modify notification content with Service and Content extensions
+---
+
+Notification extensions allow you to customize how push notifications appear and behave. There are two types:
+
+- **Notification Service Extension** — Modifies notification content before display (e.g., download images, decrypt content)
+- **Notification Content Extension** — Provides custom UI for notifications
+
+## Notification Service Extension
+
+Service extensions intercept remote notifications before they're displayed, allowing you to modify the content or download attachments.
+
+### Getting Started
+
+<Steps>
+  <Step title="Generate the service extension">
+    ```bash
+    npx create-target notification-service
+    ```
+
+    This creates `targets/notification-service/` with:
+    - `expo-target.config.js` — Target configuration
+    - `NotificationService.swift` — Extension implementation
+  </Step>
+
+  <Step title="Configure the target">
+    ```js targets/notification-service/expo-target.config.js
+    /** @type {import('@bacons/apple-targets/app.plugin').Config} */
+    module.exports = {
+      type: "notification-service",
+      deploymentTarget: "15.0",
+    };
+    ```
+  </Step>
+
+  <Step title="Run prebuild">
+    ```bash
+    npx expo prebuild -p ios --clean
+    ```
+  </Step>
+</Steps>
+
+### Implementation
+
+The generated service extension provides a starting point:
+
+```swift targets/notification-service/NotificationService.swift
+import UserNotifications
+
+class NotificationService: UNNotificationServiceExtension {
+
+    var contentHandler: ((UNNotificationContent) -> Void)?
+    var bestAttemptContent: UNMutableNotificationContent?
+
+    override func didReceive(_ request: UNNotificationRequest, withContentHandler contentHandler: @escaping (UNNotificationContent) -> Void) {
+        self.contentHandler = contentHandler
+        bestAttemptContent = (request.content.mutableCopy() as? UNMutableNotificationContent)
+        
+        if let bestAttemptContent = bestAttemptContent {
+            // Modify the notification content here...
+            bestAttemptContent.title = "\(bestAttemptContent.title) [modified]"
+            
+            contentHandler(bestAttemptContent)
+        }
+    }
+    
+    override func serviceExtensionTimeWillExpire() {
+        // Called just before the extension will be terminated by the system.
+        // Use this as an opportunity to deliver your "best attempt" at modified content,
+        // otherwise the original push payload will be used.
+        if let contentHandler = contentHandler, let bestAttemptContent =  bestAttemptContent {
+            contentHandler(bestAttemptContent)
+        }
+    }
+
+}
+```
+
+### Downloading Images
+
+Here's how to download and attach images to notifications:
+
+```swift
+override func didReceive(_ request: UNNotificationRequest, withContentHandler contentHandler: @escaping (UNNotificationContent) -> Void) {
+    self.contentHandler = contentHandler
+    bestAttemptContent = (request.content.mutableCopy() as? UNMutableNotificationContent)
+    
+    guard let bestAttemptContent = bestAttemptContent,
+          let imageURLString = request.content.userInfo["image_url"] as? String,
+          let imageURL = URL(string: imageURLString) else {
+        contentHandler(request.content)
+        return
+    }
+    
+    // Download the image
+    downloadImage(from: imageURL) { attachment in
+        if let attachment = attachment {
+            bestAttemptContent.attachments = [attachment]
+        }
+        contentHandler(bestAttemptContent)
+    }
+}
+
+func downloadImage(from url: URL, completion: @escaping (UNNotificationAttachment?) -> Void) {
+    let task = URLSession.shared.downloadTask(with: url) { localURL, response, error in
+        guard let localURL = localURL else {
+            completion(nil)
+            return
+        }
+        
+        // Move to a location that won't be deleted
+        let tempDirectory = FileManager.default.temporaryDirectory
+        let targetURL = tempDirectory.appendingPathComponent(url.lastPathComponent)
+        
+        try? FileManager.default.removeItem(at: targetURL)
+        try? FileManager.default.moveItem(at: localURL, to: targetURL)
+        
+        let attachment = try? UNNotificationAttachment(identifier: "", url: targetURL, options: nil)
+        completion(attachment)
+    }
+    task.resume()
+}
+```
+
+### Decrypting Content
+
+For end-to-end encrypted notifications:
+
+```swift
+override func didReceive(_ request: UNNotificationRequest, withContentHandler contentHandler: @escaping (UNNotificationContent) -> Void) {
+    self.contentHandler = contentHandler
+    bestAttemptContent = (request.content.mutableCopy() as? UNMutableNotificationContent)
+    
+    guard let bestAttemptContent = bestAttemptContent,
+          let encryptedBody = request.content.userInfo["encrypted_body"] as? String else {
+        contentHandler(request.content)
+        return
+    }
+    
+    // Decrypt the content
+    if let decryptedBody = decrypt(encryptedBody) {
+        bestAttemptContent.body = decryptedBody
+    }
+    
+    contentHandler(bestAttemptContent)
+}
+
+func decrypt(_ encrypted: String) -> String? {
+    // Implement your decryption logic
+    return encrypted // placeholder
+}
+```
+
+### Sending the Notification Payload
+
+For the service extension to run, include `"mutable-content": 1` in your push notification:
+
+```json
+{
+  "aps": {
+    "alert": {
+      "title": "New Message",
+      "body": "You have a new message"
+    },
+    "mutable-content": 1
+  },
+  "image_url": "https://example.com/image.jpg"
+}
+```
+
+## Notification Content Extension
+
+Content extensions provide custom UI for notifications when users long-press or 3D Touch them.
+
+### Getting Started
+
+<Steps>
+  <Step title="Generate the content extension">
+    ```bash
+    npx create-target notification-content
+    ```
+
+    This creates `targets/notification-content/` with:
+    - `expo-target.config.js` — Target configuration
+    - `NotificationViewController.swift` — View controller
+    - `MainInterface.storyboard` — Interface builder file (optional)
+  </Step>
+
+  <Step title="Configure the target">
+    ```js targets/notification-content/expo-target.config.js
+    module.exports = {
+      type: "notification-content",
+      deploymentTarget: "15.0",
+    };
+    ```
+  </Step>
+
+  <Step title="Customize Info.plist">
+    Edit `targets/notification-content/Info.plist` to specify which notifications use your custom UI:
+
+    ```xml
+    <key>NSExtension</key>
+    <dict>
+        <key>NSExtensionAttributes</key>
+        <dict>
+            <key>UNNotificationExtensionCategory</key>
+            <string>CUSTOM_NOTIFICATION</string>
+            <key>UNNotificationExtensionDefaultContentHidden</key>
+            <false/>
+            <key>UNNotificationExtensionInitialContentSizeRatio</key>
+            <real>1.0</real>
+        </dict>
+    </dict>
+    ```
+  </Step>
+</Steps>
+
+### Implementation
+
+```swift targets/notification-content/NotificationViewController.swift
+import UIKit
+import UserNotifications
+import UserNotificationsUI
+
+class NotificationViewController: UIViewController, UNNotificationContentExtension {
+
+    @IBOutlet var label: UILabel?
+    
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        // Do any required interface initialization here.
+    }
+    
+    func didReceive(_ notification: UNNotification) {
+        self.label?.text = notification.request.content.body
+    }
+
+}
+```
+
+### Custom SwiftUI View
+
+For a more modern approach, use SwiftUI:
+
+```swift
+import UIKit
+import UserNotifications
+import UserNotificationsUI
+import SwiftUI
+
+class NotificationViewController: UIViewController, UNNotificationContentExtension {
+    
+    override func viewDidLoad() {
+        super.viewDidLoad()
+    }
+    
+    func didReceive(_ notification: UNNotification) {
+        let content = notification.request.content
+        let contentView = NotificationContentView(
+            title: content.title,
+            body: content.body,
+            imageURL: content.userInfo["image_url"] as? String
+        )
+        
+        let hostingController = UIHostingController(rootView: contentView)
+        addChild(hostingController)
+        hostingController.view.frame = view.bounds
+        view.addSubview(hostingController.view)
+        hostingController.didMove(toParent: self)
+    }
+}
+
+struct NotificationContentView: View {
+    let title: String
+    let body: String
+    let imageURL: String?
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(title)
+                .font(.headline)
+            
+            Text(body)
+                .font(.body)
+            
+            if let imageURL = imageURL, let url = URL(string: imageURL) {
+                AsyncImage(url: url) { image in
+                    image
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                } placeholder: {
+                    ProgressView()
+                }
+                .frame(height: 200)
+                .cornerRadius(12)
+            }
+        }
+        .padding()
+    }
+}
+```
+
+### Sending the Notification Payload
+
+Include the category in your push notification:
+
+```json
+{
+  "aps": {
+    "alert": {
+      "title": "New Photo",
+      "body": "Someone shared a photo with you"
+    },
+    "category": "CUSTOM_NOTIFICATION",
+    "mutable-content": 1
+  },
+  "image_url": "https://example.com/photo.jpg"
+}
+```
+
+## Interactive Notifications
+
+Add action buttons to notifications:
+
+### Register Categories in Your App
+
+```tsx
+import * as Notifications from 'expo-notifications';
+
+// Register notification categories
+await Notifications.setNotificationCategoryAsync('MEETING_INVITE', [
+  {
+    identifier: 'ACCEPT',
+    buttonTitle: 'Accept',
+    options: {
+      opensAppToForeground: true,
+    },
+  },
+  {
+    identifier: 'DECLINE',
+    buttonTitle: 'Decline',
+    options: {
+      opensAppToForeground: false,
+    },
+  },
+]);
+```
+
+### Handle Actions in Content Extension
+
+```swift
+func didReceive(_ response: UNNotificationResponse, completionHandler completion: @escaping (UNNotificationContentExtensionResponseOption) -> Void) {
+    if response.actionIdentifier == "ACCEPT" {
+        // Handle accept action
+        completion(.dismiss)
+    } else if response.actionIdentifier == "DECLINE" {
+        // Handle decline action
+        completion(.dismiss)
+    }
+}
+```
+
+## Testing Notifications
+
+### Using Xcode
+
+1. Run your app on a device or simulator
+2. Background the app
+3. Send a test notification:
+
+```bash
+xcrun simctl push booted com.yourapp.bundleidentifier notification.json
+```
+
+Where `notification.json` contains:
+
+```json
+{
+  "aps": {
+    "alert": {
+      "title": "Test Notification",
+      "body": "This is a test"
+    },
+    "category": "CUSTOM_NOTIFICATION",
+    "mutable-content": 1
+  }
+}
+```
+
+### Using Expo Push Notifications
+
+```tsx
+import * as Notifications from 'expo-notifications';
+
+await Notifications.scheduleNotificationAsync({
+  content: {
+    title: 'Test Notification',
+    body: 'This is a test',
+    categoryIdentifier: 'CUSTOM_NOTIFICATION',
+    data: {
+      image_url: 'https://example.com/image.jpg',
+    },
+  },
+  trigger: { seconds: 2 },
+});
+```
+
+## Debugging
+
+<Tip>
+**View logs:** Attach to the notification extension process in Xcode (Debug > Attach to Process by PID or Name) to see console output.
+</Tip>
+
+<Warning>
+**Time limit:** Service extensions have ~30 seconds to complete. After that, `serviceExtensionTimeWillExpire()` is called.
+</Warning>
+
+<Tip>
+**Test on device:** Notification extensions work best on real devices. Simulators have limitations.
+</Tip>
+
+## Next Steps
+
+- Read Apple's [User Notifications documentation](https://developer.apple.com/documentation/usernotifications)
+- Learn about [notification categories](https://developer.apple.com/documentation/usernotifications/declaring_your_actionable_notification_types)
+- Explore [Expo Notifications](https://docs.expo.dev/versions/latest/sdk/notifications/)
+- Set up [push notification certificates](https://docs.expo.dev/push-notifications/push-notifications-setup/)

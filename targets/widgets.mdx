@@ -1,0 +1,294 @@
+---
+title: Widget targets
+description: Home screen widgets, Live Activities, and WidgetKit extensions
+---
+
+Widgets are the most popular target type, enabling home screen experiences, Live Activities, Dynamic Island, and watch complications.
+
+## Widget types
+
+The `widget` target type supports multiple WidgetKit features:
+
+<CardGroup cols={2}>
+  <Card title="Home Screen Widgets" icon="grid-2">
+    Static and dynamic widgets on iOS and iPadOS home screens
+  </Card>
+  <Card title="Live Activities" icon="activity">
+    Real-time updates in Dynamic Island and Lock Screen
+  </Card>
+  <Card title="Control Widgets" icon="sliders">
+    Interactive controls in Control Center and Lock Screen
+  </Card>
+  <Card title="Smart Stacks" icon="layer-group">
+    Context-aware widget rotation in widget stacks
+  </Card>
+</CardGroup>
+
+## Extension point
+
+| Property | Value |
+| --- | --- |
+| **Extension Point** | `com.apple.widgetkit-extension` |
+| **Product Type** | `com.apple.product-type.app-extension` |
+| **Frameworks** | `WidgetKit`, `SwiftUI`, `ActivityKit`, `AppIntents` |
+| **App Groups** | Enabled by default |
+
+## Creating a widget
+
+<Steps>
+  <Step title="Run create-target">
+    Generate a new widget target:
+
+    ```bash
+    npx create-target widget
+    ```
+  </Step>
+
+  <Step title="Configure the widget">
+    Edit `targets/widget/expo-target.config.js`:
+
+    ```javascript
+    /** @type {import('@bacons/apple-targets/app.plugin').Config} */
+    module.exports = {
+      type: "widget",
+      icon: "./assets/widget-icon.png",
+      colors: {
+        $widgetBackground: "#DB739C",
+        $accent: "#F09458",
+      },
+      entitlements: {
+        "com.apple.security.application-groups": ["group.com.myapp.data"],
+      },
+    };
+    ```
+  </Step>
+
+  <Step title="Implement the widget">
+    Edit `targets/widget/Widget.swift` with your SwiftUI implementation.
+  </Step>
+
+  <Step title="Rebuild the project">
+    ```bash
+    npx expo prebuild -p ios --clean
+    ```
+  </Step>
+
+  <Step title="Build and test">
+    Open in Xcode and build the widget target:
+
+    ```bash
+    xed ios
+    ```
+  </Step>
+</Steps>
+
+## Widget colors
+
+Widgets use two special colors with corresponding Xcode build settings:
+
+| Color Name | Build Setting | Purpose |
+| --- | --- | --- |
+| `$widgetBackground` | `ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME` | Widget background color |
+| `$accent` | `ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME` | Tint color for buttons and interactive elements |
+
+Define colors in your config:
+
+```javascript
+colors: {
+  // Simple color
+  $widgetBackground: "#DB739C",
+  
+  // Light/dark mode
+  $accent: {
+    light: "#F09458",
+    dark: "#3E72A0",
+  },
+  
+  // Custom colors for SwiftUI
+  gradient1: "#E4975D",
+  gradient2: "#3E72A0",
+}
+```
+
+## Live Activities
+
+Live Activities require `ActivityKit` framework (included by default):
+
+```swift
+import ActivityKit
+import WidgetKit
+import SwiftUI
+
+struct MyActivityWidget: Widget {
+    var body: some WidgetConfiguration {
+        ActivityConfiguration(for: MyActivityAttributes.self) { context in
+            // Lock screen / banner UI
+            VStack {
+                Text("Status: \(context.state.status)")
+            }
+        } dynamicIsland: { context in
+            // Dynamic Island UI
+            DynamicIsland {
+                DynamicIslandExpandedRegion(.leading) {
+                    Text("Leading")
+                }
+            }
+        }
+    }
+}
+```
+
+Start a Live Activity from your React Native app:
+
+```javascript
+// You'll need to use a native module to start Live Activities
+// The widget extension displays the activity
+```
+
+## Control Widgets
+
+Control widgets appear in Control Center (iOS 18+):
+
+```swift
+import AppIntents
+import WidgetKit
+
+@available(iOS 18.0, *)
+struct MyControlWidget: ControlWidget {
+    static let kind: String = "com.myapp.control"
+    
+    var body: some ControlWidgetConfiguration {
+        StaticControlConfiguration(kind: Self.kind) {
+            ControlWidgetButton(action: OpenAppIntent()) {
+                Label("Open App", systemImage: "star")
+            }
+        }
+        .displayName("My Control")
+        .description("Quick action for my app")
+    }
+}
+
+@available(iOS 18.0, *)
+struct OpenAppIntent: ControlConfigurationIntent {
+    static let title: LocalizedStringResource = "Open App"
+    static let openAppWhenRun: Bool = true
+    
+    func perform() async throws -> some IntentResult & OpensIntent {
+        return .result(opensIntent: OpenURLIntent(
+            URL(string: "myapp://settings")!
+        ))
+    }
+}
+```
+
+<Warning>
+  Control widget intents must be in the `_shared` folder so they're linked to both the widget extension and main app target. See [Shared Files](/advanced/shared-files).
+</Warning>
+
+Reload controls from React Native:
+
+```javascript
+import { ExtensionStorage } from "@bacons/apple-targets";
+
+ExtensionStorage.reloadControls();
+```
+
+## Sharing data with widgets
+
+Use App Groups to share data between your app and widget:
+
+```javascript
+import { ExtensionStorage } from "@bacons/apple-targets";
+
+const storage = new ExtensionStorage("group.com.myapp.data");
+
+// Set data
+storage.set("message", "Hello from the app!");
+storage.set("counter", 42);
+
+// Reload the widget to display new data
+ExtensionStorage.reloadWidget();
+```
+
+Access the data in your widget:
+
+```swift
+let defaults = UserDefaults(suiteName: "group.com.myapp.data")
+let message = defaults?.string(forKey: "message") ?? "No data"
+let counter = defaults?.integer(forKey: "counter") ?? 0
+```
+
+## Watch widgets
+
+For Apple Watch complications, use the `watch-widget` target type instead:
+
+```bash
+npx create-target watch-widget
+```
+
+Watch widgets use the same WidgetKit framework but with watch-specific layouts.
+
+## Best practices
+
+<Accordion title="Optimize for performance">
+  - Keep widget code lightweight
+  - Use `TimelineProvider` efficiently
+  - Minimize network requests
+  - Cache images and data
+</Accordion>
+
+<Accordion title="Design for glanceability">
+  - Show the most important information first
+  - Use clear typography and spacing
+  - Support all widget sizes (small, medium, large)
+  - Test in both light and dark mode
+</Accordion>
+
+<Accordion title="Handle data updates">
+  - Use App Groups for data sharing
+  - Call `reloadWidget()` after data changes
+  - Implement background updates for time-sensitive data
+  - Handle missing or stale data gracefully
+</Accordion>
+
+## Troubleshooting
+
+<Accordion title="Widget doesn't appear on home screen">
+  On iOS 18+, long-press your app icon and select widget display options to transform the app icon into the widget. On earlier iOS versions, add the widget from the home screen widget picker.
+</Accordion>
+
+<Accordion title="SwiftUI previews not working">
+  Clear the SwiftUI preview cache:
+
+  ```bash
+  xcrun simctl --set previews delete all
+  ```
+</Accordion>
+
+<Accordion title="Widget not updating">
+  Verify:
+  - App Groups entitlement is correctly configured
+  - You're calling `ExtensionStorage.reloadWidget()`
+  - The widget's `TimelineProvider` is returning new entries
+</Accordion>
+
+## Production example
+
+Check out [Evan Bacon's Pillar Valley widget](https://evanbacon.dev/blog/apple-home-screen-widgets) for a real-world implementation.
+
+## Learn more
+
+<CardGroup cols={2}>
+  <Card title="Sharing data" icon="database" href="/guides/sharing-data">
+    Share data between app and widget
+  </Card>
+  <Card title="Control widgets" icon="sliders" href="/guides/control-widgets">
+    Build Control Center widgets
+  </Card>
+  <Card title="Widget guide" icon="book" href="/guides/widgets">
+    Detailed widget implementation guide
+  </Card>
+  <Card title="Apple documentation" icon="apple" href="https://developer.apple.com/documentation/widgetkit">
+    Official WidgetKit documentation
+  </Card>
+</CardGroup>

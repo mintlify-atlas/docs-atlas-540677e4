@@ -1,0 +1,485 @@
+---
+title: Safari Extensions
+description: Build Safari Web Extensions that run in Safari on iOS and macOS
+---
+
+Safari Web Extensions allow you to customize the Safari browsing experience. They can modify web pages, add toolbar buttons, and interact with the browser using the Web Extensions API.
+
+<Note>
+Safari extensions use standard Web Extensions APIs compatible with Chrome and Firefox extensions, with some Safari-specific features.
+</Note>
+
+## Getting Started
+
+<Steps>
+  <Step title="Generate the Safari extension">
+    ```bash
+    npx create-target safari
+    ```
+
+    This creates `targets/safari/` with:
+    - `expo-target.config.js` — Target configuration
+    - `SafariWebExtensionHandler.swift` — Native message handler
+    - `assets/` — Web extension files (HTML, CSS, JavaScript)
+  </Step>
+
+  <Step title="Configure the target">
+    ```js targets/safari/expo-target.config.js
+    /** @type {import('@bacons/apple-targets/app.plugin').Config} */
+    module.exports = {
+      type: "safari",
+      icon: "../../assets/icon.png",
+      deploymentTarget: "15.0",
+    };
+    ```
+  </Step>
+
+  <Step title="Run prebuild">
+    ```bash
+    npx expo prebuild -p ios --clean
+    ```
+  </Step>
+
+  <Step title="Enable the extension">
+    Run your app, then go to Safari Settings > Extensions and enable your extension.
+  </Step>
+</Steps>
+
+## Extension Structure
+
+The generated extension includes these files:
+
+```
+targets/safari/assets/
+├── manifest.json          # Extension manifest
+├── background.js          # Background script
+├── content.js            # Content script (runs on web pages)
+├── popup.html            # Toolbar button popup
+├── popup.js              # Popup script
+├── popup.css             # Popup styles
+├── images/               # Extension icons
+└── _locales/en/          # Localization
+    └── messages.json
+```
+
+### Manifest File
+
+```json targets/safari/assets/manifest.json
+{
+  "manifest_version": 3,
+  "name": "My Extension",
+  "version": "1.0",
+  "description": "A Safari Web Extension",
+  
+  "icons": {
+    "48": "images/icon-48.png",
+    "96": "images/icon-96.png",
+    "128": "images/icon-128.png",
+    "256": "images/icon-256.png"
+  },
+  
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "My Extension",
+    "default_icon": {
+      "16": "images/toolbar-icon-16.png",
+      "19": "images/toolbar-icon-19.png",
+      "32": "images/toolbar-icon-32.png",
+      "38": "images/toolbar-icon-38.png"
+    }
+  },
+  
+  "background": {
+    "service_worker": "background.js"
+  },
+  
+  "content_scripts": [
+    {
+      "matches": ["*://*/*"],
+      "js": ["content.js"]
+    }
+  ],
+  
+  "permissions": [
+    "activeTab",
+    "storage"
+  ]
+}
+```
+
+## Content Scripts
+
+Content scripts run in the context of web pages:
+
+```js targets/safari/assets/content.js
+// Run when the page loads
+(function() {
+    'use strict';
+    
+    console.log('Extension loaded on:', window.location.href);
+    
+    // Example: Highlight all links
+    const links = document.querySelectorAll('a');
+    links.forEach(link => {
+        link.style.outline = '2px solid red';
+    });
+    
+    // Listen for messages from background script
+    browser.runtime.onMessage.addListener((request, sender, sendResponse) => {
+        if (request.action === 'highlightLinks') {
+            highlightLinks(request.color);
+            sendResponse({ success: true });
+        }
+        return true;
+    });
+    
+    function highlightLinks(color) {
+        const links = document.querySelectorAll('a');
+        links.forEach(link => {
+            link.style.backgroundColor = color;
+        });
+    }
+})();
+```
+
+## Background Scripts
+
+Background scripts handle extension logic:
+
+```js targets/safari/assets/background.js
+// Listen for extension installation
+browser.runtime.onInstalled.addListener(() => {
+    console.log('Extension installed');
+    
+    // Set default storage values
+    browser.storage.local.set({
+        highlightColor: '#ffff00',
+        enabled: true
+    });
+});
+
+// Listen for toolbar button clicks
+browser.action.onClicked.addListener((tab) => {
+    // Send message to content script
+    browser.tabs.sendMessage(tab.id, {
+        action: 'highlightLinks',
+        color: '#ffff00'
+    });
+});
+
+// Listen for messages from content scripts
+browser.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    console.log('Received message:', request);
+    
+    if (request.action === 'getData') {
+        browser.storage.local.get('highlightColor').then(result => {
+            sendResponse({ color: result.highlightColor });
+        });
+        return true; // Keep channel open for async response
+    }
+});
+```
+
+## Popup UI
+
+<CodeGroup>
+```html targets/safari/assets/popup.html
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+    <div class="container">
+        <h1>My Extension</h1>
+        <p>Customize your browsing experience</p>
+        
+        <div class="setting">
+            <label for="color">Highlight Color:</label>
+            <input type="color" id="color" value="#ffff00">
+        </div>
+        
+        <button id="apply">Apply</button>
+        <button id="reset">Reset</button>
+    </div>
+    
+    <script src="popup.js"></script>
+</body>
+</html>
+```
+
+```js targets/safari/assets/popup.js
+document.addEventListener('DOMContentLoaded', () => {
+    const colorInput = document.getElementById('color');
+    const applyButton = document.getElementById('apply');
+    const resetButton = document.getElementById('reset');
+    
+    // Load saved color
+    browser.storage.local.get('highlightColor').then(result => {
+        if (result.highlightColor) {
+            colorInput.value = result.highlightColor;
+        }
+    });
+    
+    // Apply button
+    applyButton.addEventListener('click', () => {
+        const color = colorInput.value;
+        
+        // Save to storage
+        browser.storage.local.set({ highlightColor: color });
+        
+        // Apply to current tab
+        browser.tabs.query({ active: true, currentWindow: true }).then(tabs => {
+            browser.tabs.sendMessage(tabs[0].id, {
+                action: 'highlightLinks',
+                color: color
+            });
+        });
+    });
+    
+    // Reset button
+    resetButton.addEventListener('click', () => {
+        colorInput.value = '#ffff00';
+        browser.storage.local.set({ highlightColor: '#ffff00' });
+    });
+});
+```
+
+```css targets/safari/assets/popup.css
+body {
+    width: 300px;
+    padding: 0;
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+}
+
+.container {
+    padding: 20px;
+}
+
+h1 {
+    font-size: 18px;
+    margin: 0 0 8px 0;
+}
+
+p {
+    font-size: 14px;
+    color: #666;
+    margin: 0 0 20px 0;
+}
+
+.setting {
+    margin-bottom: 16px;
+}
+
+label {
+    display: block;
+    font-size: 14px;
+    margin-bottom: 8px;
+}
+
+input[type="color"] {
+    width: 100%;
+    height: 40px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+button {
+    width: 100%;
+    padding: 10px;
+    margin-bottom: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+#apply {
+    background-color: #007AFF;
+    color: white;
+}
+
+#reset {
+    background-color: #f0f0f0;
+    color: #333;
+}
+```
+</CodeGroup>
+
+## Native Messaging
+
+Communicate between your web extension and native Swift code:
+
+### Swift Handler
+
+```swift targets/safari/SafariWebExtensionHandler.swift
+import SafariServices
+import os.log
+
+class SafariWebExtensionHandler: NSObject, NSExtensionRequestHandling {
+
+    func beginRequest(with context: NSExtensionContext) {
+        let item = context.inputItems[0] as! NSExtensionItem
+        let message = item.userInfo?[SFExtensionMessageKey]
+        os_log(.default, "Received message from browser.runtime.sendNativeMessage: %@", message as! CVarArg)
+
+        let response = NSExtensionItem()
+        response.userInfo = [ SFExtensionMessageKey: [ "Response to": message ] ]
+
+        context.completeRequest(returningItems: [response], completionHandler: nil)
+    }
+
+}
+```
+
+### JavaScript Caller
+
+```js
+// Send message to native code
+browser.runtime.sendNativeMessage('com.yourapp.safari', {
+    action: 'getData',
+    key: 'someKey'
+}, response => {
+    console.log('Native response:', response);
+});
+```
+
+## Permissions
+
+Common permissions for Safari extensions:
+
+```json
+{
+  "permissions": [
+    "activeTab",        // Access current tab
+    "storage",          // Use browser.storage API
+    "tabs",             // Query and manage tabs
+    "webRequest",       // Intercept network requests
+    "webNavigation",    // Monitor page navigation
+    "contextMenus"      // Add context menu items
+  ],
+  
+  "host_permissions": [
+    "*://*/*"           // Access all websites
+  ]
+}
+```
+
+## Content Security Policy
+
+For Manifest V3, configure CSP:
+
+```json
+{
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self';"
+  }
+}
+```
+
+## Debugging
+
+### Enable Web Inspector
+
+1. On iOS: Settings > Safari > Advanced > Web Inspector
+2. On Mac: Safari > Settings > Advanced > Show Develop menu
+
+### Debug Content Scripts
+
+1. Open Safari and navigate to a page
+2. Right-click and select "Inspect Element"
+3. Go to the Sources tab to see your content scripts
+
+### Debug Background Scripts
+
+1. Open Safari > Develop > Web Extension Background Content
+2. Select your extension from the list
+
+### Debug Popup
+
+1. Right-click your extension's toolbar icon
+2. Select "Inspect Popup"
+
+## Testing
+
+<Steps>
+  <Step title="Run your app">
+    Build and run your app in Xcode or on a device.
+  </Step>
+
+  <Step title="Enable the extension">
+    - iOS: Settings > Safari > Extensions > Your Extension (toggle on)
+    - macOS: Safari > Settings > Extensions > Your Extension (check the box)
+  </Step>
+
+  <Step title="Test functionality">
+    Open Safari and navigate to a website to test your content scripts.
+  </Step>
+</Steps>
+
+## Distribution
+
+<Warning>
+Safari extensions must be distributed through the App Store as part of an iOS or macOS app.
+</Warning>
+
+Your extension is packaged with your app and automatically available when users install your app.
+
+## Localization
+
+Add translations in `assets/_locales/`:
+
+```
+assets/_locales/
+├── en/
+│   └── messages.json
+├── es/
+│   └── messages.json
+└── fr/
+    └── messages.json
+```
+
+```json _locales/en/messages.json
+{
+  "extensionName": {
+    "message": "My Extension"
+  },
+  "extensionDescription": {
+    "message": "A great Safari extension"
+  }
+}
+```
+
+Reference in manifest.json:
+
+```json
+{
+  "name": "__MSG_extensionName__",
+  "description": "__MSG_extensionDescription__"
+}
+```
+
+## Best Practices
+
+<Tip>
+**Keep it lightweight:** Content scripts run on every page load. Minimize their impact on page performance.
+</Tip>
+
+<Tip>
+**Use storage wisely:** Store settings in `browser.storage.local` or `browser.storage.sync` (syncs across devices).
+</Tip>
+
+<Warning>
+**Respect privacy:** Only request permissions you actually need. Users can see and must approve all permissions.
+</Warning>
+
+## Next Steps
+
+- Read [Safari Web Extensions documentation](https://developer.apple.com/documentation/safariservices/safari_web_extensions)
+- Learn about [Web Extensions APIs](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions)
+- Explore [Safari-specific APIs](https://developer.apple.com/documentation/safariservices/safari_web_extensions/safari-specific_javascript_apis)
+- Check out [browser.runtime API](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/runtime)

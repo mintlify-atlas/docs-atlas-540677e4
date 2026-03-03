@@ -1,0 +1,428 @@
+---
+title: 'CLI Reference'
+description: 'Complete command reference for Expo Apple Targets'
+---
+
+The Expo Apple Targets CLI provides commands for scaffolding and managing Apple targets in your Expo project.
+
+## create-target
+
+Create a new Apple target with Swift templates and configuration files.
+
+### Basic syntax
+
+```bash
+npx create-target [target] [options]
+```
+
+### Arguments
+
+<ParamField path="target" type="string" optional>
+  The type of target to create. If omitted, displays an interactive selection menu.
+  
+  Examples: `widget`, `clip`, `share`, `action`, `notification-content`, etc.
+</ParamField>
+
+### Options
+
+<ParamField path="--no-install" type="boolean" default="false">
+  Skip installing the `@bacons/apple-targets` package.
+  
+  Use this when the package is already installed or when you want to install dependencies manually.
+  
+  ```bash
+  npx create-target widget --no-install
+  ```
+</ParamField>
+
+<ParamField path="--version" type="boolean">
+  Display the current version of create-target.
+  
+  **Alias:** `-v`
+  
+  ```bash
+  npx create-target --version
+  ```
+</ParamField>
+
+<ParamField path="--help" type="boolean">
+  Show help information with usage examples and available options.
+  
+  **Alias:** `-h`
+  
+  ```bash
+  npx create-target --help
+  ```
+</ParamField>
+
+## Command output
+
+### Successful creation
+
+When a target is successfully created:
+
+```bash Terminal
+$ npx create-target widget
+
+Creating a widget Apple target.
+
+Installing @bacons/apple-targets package...
+
+added 1 package in 3s
+
+Writing expo-target.config.js file
+Writing Info.plist file
+Target created! Run npx expo prebuild -p ios to fully generate the target. Develop native code in Xcode.
+```
+
+### Version check
+
+```bash Terminal
+$ npx create-target --version
+3.0.4
+```
+
+### Help output
+
+```bash Terminal
+$ npx create-target --help
+
+Info
+  Creates a new Expo Apple target
+
+Usage
+  $ npx create-target <target> [options]
+
+Options
+  --no-install      Skip installing npm packages
+  -v, --version     Version number
+  -h, --help        Usage info
+
+  The package manager used for installing
+  node modules is based on how you invoke the CLI:
+
+   npm: npx create-target
+  yarn: yarn create target
+  pnpm: pnpm create target
+   bun: bun create target
+```
+
+### Interactive selection
+
+```bash Terminal
+$ npx create-target
+
+? Choose a target: (Use arrow keys)
+❯ Widget - Home screen widget
+  App Clip - Instantly open your app without installing
+  Action - Headless action that appears in share sheets
+  Account Auth
+  App Intent
+  Background Download
+  Broadcast Upload
+  Call Directory
+  Content Blocker - Safari content blocker extension
+  Credentials Provider
+  Device Activity Monitor
+  File Provider
+  Keyboard Extension - Custom system keyboard
+  Location Push
+  (Move up and down to reveal more choices)
+```
+
+### Overwrite warning
+
+```bash Terminal
+$ npx create-target widget
+
+Creating a widget Apple target.
+
+? Target directory /path/to/project/targets/widget is not empty. Continue? (Y/n)
+```
+
+## Workflow
+
+The typical workflow for creating and working with targets:
+
+### 1. Create the target
+
+```bash
+npx create-target widget
+```
+
+### 2. Review generated files
+
+```bash
+ls -la targets/widget/
+
+total 48
+drwxr-xr-x  7 user  staff   224 Mar  3 12:00 .
+drwxr-xr-x  3 user  staff    96 Mar  3 12:00 ..
+-rw-r--r--  1 user  staff   372 Mar  3 12:00 AppIntent.swift
+-rw-r--r--  1 user  staff  1102 Mar  3 12:00 Info.plist
+-rw-r--r--  1 user  staff  1922 Mar  3 12:00 WidgetControl.swift
+-rw-r--r--  1 user  staff  2318 Mar  3 12:00 WidgetLiveActivity.swift
+-rw-r--r--  1 user  staff   251 Mar  3 12:00 expo-target.config.js
+-rw-r--r--  1 user  staff   213 Mar  3 12:00 index.swift
+-rw-r--r--  1 user  staff  2473 Mar  3 12:00 widgets.swift
+```
+
+### 3. Configure the target
+
+Edit the config file to customize icon, colors, entitlements, etc:
+
+```js targets/widget/expo-target.config.js
+/** @type {import('@bacons/apple-targets/app.plugin').ConfigFunction} */
+module.exports = config => ({
+  type: "widget",
+  icon: './assets/widget-icon.png',
+  colors: {
+    $accent: 'steelblue',
+  },
+  entitlements: {
+    'com.apple.security.application-groups': [
+      `group.${config.ios.bundleIdentifier}.widget`
+    ],
+  },
+});
+```
+
+### 4. Generate Xcode project
+
+```bash
+npx expo prebuild -p ios --clean
+```
+
+```bash Terminal output
+» Removing ios
+› Creating native directories (./ios)
+› Updating ios/MyApp.xcodeproj
+› Adding target widget
+› Configuring entitlements
+› Installing CocoaPods dependencies
+
+Successfully generated native projects.
+```
+
+### 5. Open in Xcode
+
+```bash
+xed ios
+```
+
+Your target appears under **expo:targets/widget** in the Xcode sidebar.
+
+### 6. Build and test
+
+- Select your target from the Xcode scheme picker
+- Build and run (⌘R)
+- Develop Swift code in the `expo:targets` folder
+- Changes are saved to `/targets/widget/` automatically
+
+### 7. Rebuild after config changes
+
+If you modify `expo-target.config.js` or `app.json`:
+
+```bash
+npx expo prebuild -p ios --clean
+```
+
+## Target types reference
+
+Quick reference for commonly used target types:
+
+| Target Type | Description | Common Use Cases |
+|------------|-------------|------------------|
+| `widget` | WidgetKit home screen widget | Live data display, quick actions |
+| `clip` | App Clip | Instant experiences, QR codes |
+| `share` | Share extension | Share sheet integration |
+| `action` | Action extension | Context menu actions |
+| `notification-content` | Rich notification UI | Custom notification layouts |
+| `notification-service` | Notification service | Modify notifications before display |
+| `intent` | Siri Intent extension | Siri shortcuts, voice commands |
+| `intent-ui` | Siri Intent UI | Custom UI for Siri shortcuts |
+| `keyboard` | Custom keyboard | Third-party keyboards |
+| `safari` | Safari extension | Browser extensions |
+| `watch` | Apple Watch app | Companion watch apps |
+| `watch-widget` | Watch face complication | Watch complications |
+| `content-blocker` | Safari content blocker | Ad blockers, tracking protection |
+
+### Network extensions
+
+| Target Type | Description |
+|------------|-------------|
+| `network-packet-tunnel` | VPN packet tunnel provider |
+| `network-app-proxy` | Per-app VPN proxy |
+| `network-filter-data` | Network content filter |
+| `network-dns-proxy` | DNS proxy provider |
+
+### File and authentication
+
+| Target Type | Description |
+|------------|-------------|
+| `file-provider` | Document provider extension |
+| `file-provider-ui` | Document provider UI |
+| `credentials-provider` | Password AutoFill provider |
+| `account-auth` | Account authentication |
+
+### Media and broadcast
+
+| Target Type | Description |
+|------------|-------------|
+| `broadcast-upload` | ReplayKit broadcast upload |
+| `broadcast-setup-ui` | ReplayKit setup UI |
+| `photo-editing` | Photo editing extension |
+
+### Other extensions
+
+| Target Type | Description |
+|------------|-------------|
+| `quicklook-thumbnail` | Quick Look thumbnails |
+| `quicklook-preview` | Quick Look previews |
+| `spotlight` | Spotlight indexing |
+| `call-directory` | Call blocking and identification |
+| `message-filter` | SMS/MMS filtering |
+
+## Advanced usage
+
+### Multiple targets
+
+Create multiple targets for complex apps:
+
+```bash
+npx create-target widget
+npx create-target clip  
+npx create-target share
+npx create-target notification-content
+```
+
+Results in:
+
+```
+targets/
+├── widget/
+│   ├── expo-target.config.js
+│   └── *.swift
+├── clip/
+│   ├── expo-target.config.js
+│   └── *.swift
+├── share/
+│   ├── expo-target.config.js
+│   └── *.swift
+└── notification-content/
+    ├── expo-target.config.js
+    └── *.swift
+```
+
+### Custom target names
+
+The target type and directory name don't have to match. You can create multiple targets of the same type:
+
+```bash
+# Create first widget
+npx create-target widget
+mv targets/widget targets/weather-widget
+
+# Create second widget
+npx create-target widget
+mv targets/widget targets/calendar-widget
+```
+
+Both will work as long as each has a valid `expo-target.config.js` with `type: "widget"`.
+
+### CI/CD integration
+
+```yaml .github/workflows/build.yml
+name: Build iOS
+on: [push]
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Setup Node
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+      
+      - name: Install dependencies
+        run: npm install
+      
+      - name: Create widget target
+        run: npx create-target widget
+      
+      - name: Prebuild iOS
+        run: npx expo prebuild -p ios --clean
+      
+      - name: Build app
+        run: |
+          cd ios
+          xcodebuild -workspace MyApp.xcworkspace \
+            -scheme MyApp \
+            -configuration Release
+```
+
+## Debugging
+
+### Enable debug mode
+
+```bash
+EXPO_DEBUG=1 npx create-target widget
+```
+
+```bash Terminal output
+  expo:create-target Default args:
+  expo:create-target { '--no-install': false, _: [ 'widget' ] }
+  expo:create-target Parsed:
+  expo:create-target { projectRoot: 'widget', args: {} }
+
+Creating a widget Apple target.
+
+Installing @bacons/apple-targets package...
+# ...
+```
+
+### Common issues
+
+**Issue**: `Could not find Expo project root directory`
+
+```bash
+# ❌ Wrong: Running from subdirectory
+cd src && npx create-target widget
+
+# ✅ Correct: Run from project root
+npx create-target widget
+```
+
+**Issue**: Target directory not empty
+
+```bash
+# Option 1: Remove manually
+rm -rf targets/widget
+npx create-target widget
+
+# Option 2: Confirm overwrite when prompted
+npx create-target widget
+? Target directory targets/widget is not empty. Continue? Yes
+```
+
+**Issue**: Package manager conflicts
+
+```bash
+# Use consistent package manager
+npm install          # Don't mix npm...
+yarn create target   # ...with yarn
+
+# Pick one:
+npx create-target widget   # npm
+# OR
+yarn create target widget  # yarn
+```
+
+## See also
+
+- [Configuration Reference](/configuration/target-config) - Configure targets with expo-target.config.js
+- [Target Types](/targets/overview) - Complete guide to all target types
+- [Xcode Integration](/guides/xcode-development) - Develop targets in Xcode
