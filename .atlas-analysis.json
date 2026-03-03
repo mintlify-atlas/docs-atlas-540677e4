@@ -1,0 +1,133 @@
+{
+  "projectType": "framework",
+  "projectName": "Expo Apple Targets",
+  "projectDescription": "Expo Config Plugin for generating native Apple targets like Widgets, App Clips, and Extensions with Continuous Native Generation.",
+  "theme": "aspen",
+  "primaryColor": "#007AFF",
+  "lightColor": "#5AC8FA",
+  "darkColor": "#0A84FF",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "installation"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/how-it-works",
+              "concepts/target-config",
+              "concepts/development-workflow",
+              "concepts/entitlements",
+              "concepts/code-signing"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/widgets",
+              "guides/app-clips",
+              "guides/share-extensions",
+              "guides/control-widgets",
+              "guides/sharing-data",
+              "guides/watch-apps",
+              "guides/notifications",
+              "guides/safari-extensions"
+            ]
+          },
+          {
+            "group": "Advanced",
+            "pages": [
+              "advanced/cocoapods",
+              "advanced/shared-files",
+              "advanced/export-js",
+              "advanced/custom-frameworks",
+              "advanced/troubleshooting"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Reference",
+        "groups": [
+          {
+            "group": "CLI",
+            "pages": [
+              "cli/create-target",
+              "cli/commands"
+            ]
+          },
+          {
+            "group": "API",
+            "pages": [
+              "api/config-schema",
+              "api/extension-storage",
+              "api/colors",
+              "api/images"
+            ]
+          },
+          {
+            "group": "Targets",
+            "pages": [
+              "targets/overview",
+              "targets/widgets",
+              "targets/app-clips",
+              "targets/extensions",
+              "targets/watch-apps",
+              "targets/notifications",
+              "targets/safari",
+              "targets/network",
+              "targets/complete-list"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Generate 40+ native Apple target types (Widgets, App Clips, Watch Apps, Extensions)",
+    "Continuous Native Generation - keep target source outside /ios directory",
+    "CLI tool for scaffolding targets with templates",
+    "Shared data between app and targets via App Groups",
+    "Automatic entitlements and code signing configuration",
+    "Support for Live Activities, Control Widgets, and WidgetKit",
+    "Xcode project manipulation via @bacons/xcode",
+    "CocoaPods integration for target customization"
+  ],
+  "publicApiSurface": [
+    "@bacons/apple-targets (Config Plugin)",
+    "create-target (CLI)",
+    "ExtensionStorage (Native Module)",
+    "ExtensionStorage.reloadWidget()",
+    "ExtensionStorage.reloadControls()",
+    "expo-target.config.js (Config File)",
+    "TARGET_REGISTRY (40+ target types)",
+    "widget",
+    "clip",
+    "share",
+    "watch",
+    "notification-content",
+    "notification-service",
+    "intent",
+    "safari",
+    "keyboard",
+    "app-intent",
+    "spotlight",
+    "network-packet-tunnel",
+    "network-app-proxy",
+    "network-dns-proxy",
+    "content-blocker",
+    "file-provider",
+    "broadcast-upload",
+    "call-directory",
+    "message-filter",
+    "credentials-provider"
+  ]
+}
